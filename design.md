@@ -112,7 +112,7 @@ GET    /api/v1/export/{id}/download - Download export package
 
 **Amazon SQS**
 
-**Generation Queue** (`contentforge-generation-queue`):
+**Generation Queue** (`AssetQL-generation-queue`):
 - Standard queue for task distribution
 - Message format: `{batchId, taskId, prompt, styleProfileId, config}`
 - Visibility timeout: 5 minutes (allows generation + retry)
@@ -124,7 +124,7 @@ GET    /api/v1/export/{id}/download - Download export package
 - KIRO routes high-priority batches here
 - Dedicated Lambda consumers
 
-**Dead-Letter Queue** (`contentforge-generation-dlq`):
+**Dead-Letter Queue** (`AssetQL-generation-dlq`):
 - Captures failed tasks after max retries
 - Triggers alert Lambda for notification
 - Manual review and reprocessing workflow
@@ -200,7 +200,7 @@ KIRO manages the end-to-end batch workflow:
 
 **Bucket Structure**:
 ```
-contentforge-assets/
+AssetQL-assets/
 ├── raw/                    # Original generated images
 │   └── {batchId}/
 │       └── {assetId}.png
@@ -227,7 +227,7 @@ contentforge-assets/
 
 **Tables**:
 
-**Batches Table** (`contentforge-batches`):
+**Batches Table** (`AssetQL-batches`):
 ```
 PK: batchId (String)
 Attributes:
@@ -245,7 +245,7 @@ Attributes:
 GSI: userId-createdAt-index
 ```
 
-**Assets Table** (`contentforge-assets`):
+**Assets Table** (`AssetQL-assets`):
 ```
 PK: assetId (String)
 Attributes:
@@ -266,7 +266,7 @@ GSI: batchId-createdAt-index
 GSI: userId-category-index
 ```
 
-**StyleProfiles Table** (`contentforge-styles`):
+**StyleProfiles Table** (`AssetQL-styles`):
 ```
 PK: styleProfileId (String)
 Attributes:
@@ -280,7 +280,7 @@ Attributes:
 GSI: userId-createdAt-index
 ```
 
-**Tasks Table** (`contentforge-tasks`):
+**Tasks Table** (`AssetQL-tasks`):
 ```
 PK: taskId (String)
 SK: batchId (String)
@@ -303,7 +303,7 @@ GSI: batchId-status-index
 **Amazon CloudFront (CDN)**
 
 **Distribution Configuration**:
-- Origin: S3 bucket (contentforge-assets)
+- Origin: S3 bucket (AssetQL-assets)
 - Caching: Cache images for 7 days, thumbnails for 30 days
 - Compression: Automatic gzip/brotli compression
 - Geo-restriction: None (global access)
@@ -620,7 +620,7 @@ Format as JSON:
 **Unity Export**:
 
 - Format: PNG or TGA (uncompressed)
-- Folder structure: `Assets/ContentForge/{batchName}/Textures/`
+- Folder structure: `Assets/AssetQL/{batchName}/Textures/`
 - Metadata: JSON file with asset mappings
 - Package: Unity-compatible .unitypackage (optional) or ZIP
 
@@ -749,7 +749,7 @@ Format as JSON:
     "sqs:DeleteMessage",
     "sqs:GetQueueAttributes"
   ],
-  "Resource": "arn:aws:sqs:*:*:contentforge-generation-queue"
+  "Resource": "arn:aws:sqs:*:*:AssetQL-generation-queue"
 },
 {
   "Effect": "Allow",
@@ -757,7 +757,7 @@ Format as JSON:
     "s3:PutObject",
     "s3:GetObject"
   ],
-  "Resource": "arn:aws:s3:::contentforge-assets/raw/*"
+  "Resource": "arn:aws:s3:::AssetQL-assets/raw/*"
 },
 {
   "Effect": "Allow",
@@ -766,12 +766,12 @@ Format as JSON:
     "dynamodb:UpdateItem",
     "dynamodb:GetItem"
   ],
-  "Resource": "arn:aws:dynamodb:*:*:table/contentforge-*"
+  "Resource": "arn:aws:dynamodb:*:*:table/AssetQL-*"
 },
 {
   "Effect": "Allow",
   "Action": "sagemaker:InvokeEndpoint",
-  "Resource": "arn:aws:sagemaker:*:*:endpoint/contentforge-sd-endpoint"
+  "Resource": "arn:aws:sagemaker:*:*:endpoint/AssetQL-sd-endpoint"
 }
 ```
 
@@ -788,11 +788,11 @@ Format as JSON:
   "Effect": "Deny",
   "Principal": "*",
   "Action": "s3:GetObject",
-  "Resource": "arn:aws:s3:::contentforge-assets/*",
+  "Resource": "arn:aws:s3:::AssetQL-assets/*",
   "Condition": {
     "StringNotEquals": {
       "aws:PrincipalArn": [
-        "arn:aws:iam::*:role/ContentForgeLambdaRole",
+        "arn:aws:iam::*:role/AssetQLLambdaRole",
         "arn:aws:iam::*:role/CloudFrontOAI"
       ]
     }
@@ -831,7 +831,7 @@ Format as JSON:
 - Throttling response: 429 Too Many Requests
 
 **CORS Configuration**:
-- Allowed origins: Frontend domain only (https://contentforge.ai)
+- Allowed origins: Frontend domain only (https://AssetQL.ai)
 - Allowed methods: GET, POST, PUT, DELETE, OPTIONS
 - Allowed headers: Authorization, Content-Type
 - Credentials: true (allow cookies)

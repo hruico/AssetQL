@@ -1,4 +1,4 @@
-# ContentForge AI - AWS Architecture Diagram
+# AssetQL AI - AWS Architecture Diagram
 
 ## System Architecture Overview
 
