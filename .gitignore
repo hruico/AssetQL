@@ -1,0 +1,20 @@
+# Local .terraform directory (contains large binaries)
+**/.terraform/*
+
+# State files (contains your secrets in plain text)
+*.tfstate
+*.tfstate.*
+
+# Variables files (if they contain real secrets)
+*.tfvars
+*.tfvars.json
+
+# Crash logs
+crash.log
+
+# OS generated files
+.DS_Store
+
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
