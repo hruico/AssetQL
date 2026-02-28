@@ -24,6 +24,11 @@ source = "./modules/storage"
 
 project_name = var.project_name
 environment  = var.environment
+
+output "assets_bucket_name" {
+  value = aws_s3_bucket.assets.id
+}
+
 }
 
 module "database" {
@@ -36,4 +41,11 @@ source = "./modules/queues"
 
 module "auth" {
     source = "./modules/auth"
+}
+
+
+module "lambdas" {
+  source = "./modules/lambdas"
+  assets_bucket_name = module.storage.assets_bucket_name
+  environment        = var.environment
 }

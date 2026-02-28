@@ -8,7 +8,7 @@ const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-be
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
 const sqs = new SQSClient({});
-const bedrock = new BedrockRuntimeClient({ region: 'us-east-1' });
+const bedrock = new BedrockRuntimeClient({ region: 'ap-south-1' });
 
 
 // Standard API response format
