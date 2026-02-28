@@ -18,3 +18,5 @@ crash.log
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.backup
+
+node_modules

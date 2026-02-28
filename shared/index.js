@@ -22,3 +22,8 @@ function response(statusCode, body) {
     body: JSON.stringify(body)
   };
 }
+
+module.exports = { dynamo, s3, sqs, bedrock, response,
+  GetCommand, PutCommand, UpdateCommand, QueryCommand,
+  PutObjectCommand, GetObjectCommand, SendMessageBatchCommand, InvokeModelCommand };
+
