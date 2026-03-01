@@ -32,3 +32,8 @@ variable "sqs_queue_arn" {
   type        = string
   description = "ARN of the SQS queue for image generation tasks — used in IAM policies"
 }
+
+variable "tasks_table_name" {
+  type        = string
+  description = "Name of the DynamoDB table for batch tasks"
+}

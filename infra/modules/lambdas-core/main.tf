@@ -135,6 +135,50 @@ resource "aws_lambda_function" "batch_creator" {
   }
 }
 
+resource "aws_lambda_function" "automation_trigger" {
+  filename         = "../../lambdas/automation-trigger.zip"
+  function_name    = "AssetQL-AutomationTrigger-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 256
+  timeout         = 30
+
+  environment {
+    variables = {
+      SESSIONS_TABLE_NAME = var.sessions_table_name
+      TASKS_TABLE_NAME = var.tasks_table_name
+      SQS_QUEUE_URL = var.sqs_queue_url
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "export_handler" {
+  filename         = "../../lambdas/export-handler.zip"
+  function_name    = "AssetQL-ExportHandler-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 1024
+  timeout         = 300
+
+  environment {
+    variables = {
+      S3_BUCKET = var.assets_bucket_name
+      SESSIONS_TABLE_NAME = var.sessions_table_name
+      TASKS_TABLE_NAME = var.tasks_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
 # Shared IAM role for all Lambda functions
 resource "aws_iam_role" "style_embedding_role" {
   name = "AssetQL-LambdaExecutionRole-${var.environment}"
@@ -192,7 +236,7 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
       {
         Effect = "Allow"
         Action = [
-          "bedrock:InvokeAgent"
+          "bedrock-agent-runtime:InvokeAgent"
         ]
         Resource = [
           "arn:aws:bedrock:*:*:agent/*"
@@ -216,7 +260,13 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
           "s3:GetObject",
           "s3:DeleteObject"
         ]
-        Resource = "arn:aws:s3:::${var.assets_bucket_name}/*"
+        Resource = [
+          "arn:aws:dynamodb:*:*:table/${var.feedback_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.sessions_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.styles_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}",           # ← add this
+          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}/index/*"    # ← and this for GSI
+        ]      
       }
     ]
   })

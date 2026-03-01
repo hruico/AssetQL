@@ -30,6 +30,16 @@ output "batch_creator_arn" {
   value       = aws_lambda_function.batch_creator.arn
 }
 
+output "automation_trigger_arn" {
+  description = "ARN of the automation-trigger Lambda function"
+  value       = aws_lambda_function.automation_trigger.arn
+}
+
+output "export_handler_arn" {
+  description = "ARN of the export-handler Lambda function"
+  value       = aws_lambda_function.export_handler.arn
+}
+
 output "lambda_execution_role_arn" {
   description = "ARN of the shared Lambda execution IAM role — reused by lambdas-api module"
   value       = aws_iam_role.style_embedding_role.arn

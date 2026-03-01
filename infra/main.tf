@@ -55,6 +55,7 @@ module "lambdas_core" {
   styles_table_name   = module.database.styles_table_name
   feedback_table_name = module.database.feedback_table_name
   sessions_table_name = module.database.sessions_table_name
+  tasks_table_name    = module.database.tasks_table_name
 
   # SQS queue configuration
   sqs_queue_url = module.queues.queue_url
@@ -104,9 +105,7 @@ module "api_gateway" {
   # API Lambda ARNs from lambdas-api module
   feedback_handler_arn = module.lambdas_api.feedback_handler_arn
 
-  # Layer 3 Lambdas — placeholder ARNs until automation-trigger and export-handler are built
-  # Replace these with module.lambdas_core.automation_trigger_arn and 
-  # module.lambdas_core.export_handler_arn after Layer 3 is complete
-  automation_trigger_arn = "arn:aws:lambda:ap-south-1:${var.aws_account_id}:function:placeholder-automation-trigger"
-  export_handler_arn     = "arn:aws:lambda:ap-south-1:${var.aws_account_id}:function:placeholder-export-handler"
+  # Automation and export Lambda ARNs from lambdas-core module
+  automation_trigger_arn = module.lambdas_core.automation_trigger_arn
+  export_handler_arn     = module.lambdas_core.export_handler_arn
 }
