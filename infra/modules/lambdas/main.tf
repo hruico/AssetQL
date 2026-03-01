@@ -164,3 +164,24 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
     ]
   })
 }
+
+
+resource "aws_lambda_function" "session_manager" {
+  filename         = "../../lambdas/session-manager.zip"
+  function_name    = "AssetQL-SessionManager-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 256
+  timeout         = 30
+
+  environment {
+    variables = {
+      SESSIONS_TABLE_NAME = var.sessions_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}

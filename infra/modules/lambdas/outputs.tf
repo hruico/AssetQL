@@ -19,3 +19,9 @@ output "image_generator_arn" {
   description = "ARN of the image-generator Lambda function"
   value       = aws_lambda_function.image_generator.arn
 }
+
+
+output "session_manager_arn" {
+  description = "ARN of the session-manager Lambda function"
+  value       = aws_lambda_function.session_manager.arn
+}
