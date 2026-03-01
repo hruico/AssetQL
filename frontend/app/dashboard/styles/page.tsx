@@ -107,11 +107,11 @@ export default function StylesPage() {
                       Style {style.styleProfileId.slice(0, 8)}
                     </h3>
                     <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
-                      {style.artStyle}
+                      {style.descriptors.artStyle}
                     </p>
-                    {style.colorPalette && style.colorPalette.length > 0 && (
+                    {style.descriptors.colorPalette && style.descriptors.colorPalette.length > 0 && (
                       <div className="flex gap-1">
-                        {style.colorPalette.slice(0, 5).map((color, i) => (
+                        {style.descriptors.colorPalette.slice(0, 5).map((color, i) => (
                           <div
                             key={i}
                             className="h-6 w-6 rounded-full border border-zinc-200 dark:border-zinc-700"
