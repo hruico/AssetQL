@@ -14,8 +14,10 @@ AssetQL/
 │   ├── variables.tf                # Input variables
 │   ├── .terraform.lock.hcl         # Dependency lock file
 │   └── modules/                    # Terraform modules
+│       ├── agents/                 # Bedrock Agents
 │       ├── auth/                   # Cognito authentication
 │       ├── database/               # DynamoDB tables
+│       ├── lambdas/                # Lambda functions
 │       ├── queues/                 # SQS queues
 │       └── storage/                # S3 buckets & CloudFront
 │
@@ -26,7 +28,13 @@ AssetQL/
 │   │   └── index.js
 │   ├── image-generator/            # Image generation Lambda
 │   │   └── index.js
-│   └── asset-tagger/               # Auto-tagging Lambda
+│   ├── asset-tagger/               # Auto-tagging Lambda
+│   │   └── index.js
+│   ├── action-get-feedback-ledger/ # Bedrock Agent Action
+│   │   └── index.js
+│   ├── action-refine-prompt/       # Bedrock Agent Action
+│   │   └── index.js
+│   └── session-manager/            # Session lifecycle Lambda
 │       └── index.js
 │
 ├── shared/                         # Shared utilities
@@ -85,27 +93,70 @@ AssetQL/
   - Extracts: objects, scene, colors, mood, style, composition, category
   - Updates asset records with tags and thumbnail keys
 
-## Module Organization
+### 5. action-get-feedback-ledger
+- **Trigger**: Bedrock Agent Action Group invocation
+- **Purpose**: Retrieve feedback history for a session
+- **Key Features**:
+  - Queries AssetQL-feedback table by sessionId
+  - Sorts by iterationNumber ascending
+  - Returns structured feedback history, locked elements, active refinements
+  - Used by PromptEngineerAgent
 
-### Infrastructure Modules (`infra/modules/`)
+### 6. action-refine-prompt
+- **Trigger**: Bedrock Agent Action Group invocation
+- **Purpose**: Refine prompts using AI while respecting locked elements
+- **Key Features**:
+  - Calls Amazon Nova Lite with structured refinement prompt
+  - Never modifies locked elements
+  - Returns refined prompt, updated locked elements, updated active refinements
+  - Used by PromptEngineerAgent
 
-Each module is self-contained with its own `main.tf` and optional `variables.tf`:
+### 7. session-manager
+- **Trigger**: API Gateway (POST/PUT/GET /api/v1/sessions)
+- **Purpose**: Manage session lifecycle with strict phase transitions
+- **Key Features**:
+  - POST: Create new session with initial phase UPLOAD
+  - PUT: Update phase with legal transition validation
+  - GET: Retrieve session by ID
+  - Enforces phase flow: UPLOAD → SINGLE_ITERATION → BATCH_REVIEW → STYLE_LOCKED → AUTOMATION → COMPLETE
+  - Returns 409 Conflict for illegal transitions
 
-- **auth/**: Cognito user pools, identity pools, JWT configuration
-- **database/**: DynamoDB tables (batches, assets, styles, tasks)
-- **queues/**: SQS queues (generation queue, dead-letter queue)
-- **storage/**: S3 buckets (assets, exports, references), CloudFront distribution, S3 event notifications
+## Infrastructure Modules
 
-Modules are imported in `infra/main.tf`:
-```hcl
-module "storage" {
-  source = "./modules/storage"
-  project_name = var.project_name
-  environment  = var.environment
-}
-```
+### agents/ (Bedrock Agents)
+- **PromptEngineerAgent**: Uses Nova Micro, orchestrates prompt refinement
+- **QualityGatekeeperAgent**: Uses Nova Lite, manages quality control
+- IAM roles with scoped permissions for Lambda invocation and Bedrock model access
+- Lambda permissions for Bedrock Agent to invoke action functions
 
-### Shared Code (`shared/`)
+### auth/ (Cognito)
+- User pools, identity pools, JWT configuration
+
+### database/ (DynamoDB)
+- **AssetQL-batches**: Batch metadata and progress
+- **AssetQL-assets**: Asset metadata, tags, categories, thumbnails
+- **AssetQL-styles**: Style profiles with descriptors
+- **AssetQL-tasks**: Individual task status and retry counts
+- **AssetQL-feedback**: Feedback history per session/iteration
+- **AssetQL-sessions**: Session lifecycle management
+- **AssetQL-connections**: WebSocket connections
+
+### lambdas/ (Lambda Functions)
+- All 7 Lambda function resources
+- Shared IAM role with DynamoDB, Bedrock, SQS, and S3 permissions
+- Environment variables wired from other modules
+- X-Ray tracing enabled on all functions
+
+### queues/ (SQS)
+- Generation queue for image generation tasks
+- Dead-letter queue for failed tasks
+
+### storage/ (S3 & CloudFront)
+- S3 bucket for assets, thumbnails, exports, style references
+- CloudFront distribution for CDN delivery
+- S3 event notifications for triggering asset-tagger
+
+## Shared Code (`shared/`)
 
 Central location for reusable code:
 - AWS SDK v3 clients (DynamoDB, S3, SQS, Bedrock)
@@ -122,7 +173,7 @@ All Lambda functions import from this module to ensure consistency.
 - Module directories: lowercase singular nouns (e.g., `auth`, `storage`)
 
 ### Lambda Functions
-- Directory names: lowercase with hyphens (e.g., `style-embedding`, `batch-creator`)
+- Directory names: lowercase with hyphens (e.g., `style-embedding`, `session-manager`)
 - Entry point: always `index.js`
 - Handler export: `exports.handler`
 
@@ -159,8 +210,10 @@ All Lambda functions import from this module to ensure consistency.
    - API Gateway: Extract `userId` from `event.requestContext.authorizer.claims.sub`
    - SQS: Parse `JSON.parse(event.Records[0].body)`
    - S3: Extract key from `event.Records[0].s3.object.key`
-5. Add Terraform resource in appropriate module
-6. Deploy via `terraform apply`
+   - Bedrock Agent: Extract from `event.actionGroup`, `event.function`, `event.parameters`
+5. Add Terraform resource in `infra/modules/lambdas/main.tf`
+6. Add output in `infra/modules/lambdas/outputs.tf`
+7. Deploy via `terraform apply`
 
 ### Lambda Implementation Patterns
 
@@ -171,6 +224,22 @@ exports.handler = async (event) => {
   const body = JSON.parse(event.body);
   // Business logic
   return response(201, { data });
+};
+```
+
+**API Gateway Router Pattern (session-manager):**
+```javascript
+exports.handler = async (event) => {
+  const httpMethod = event.httpMethod;
+  const pathParameters = event.pathParameters || {};
+  
+  if (httpMethod === 'POST') {
+    return await createSession(event);
+  } else if (httpMethod === 'PUT' && pathParameters.sessionId) {
+    return await updateSessionPhase(event);
+  } else if (httpMethod === 'GET' && pathParameters.sessionId) {
+    return await getSession(event);
+  }
 };
 ```
 
@@ -192,6 +261,31 @@ exports.handler = async (event) => {
   const parts = s3Key.split('/');
   const assetId = parts[2].replace('.png', '');
   // Process S3 object
+};
+```
+
+**Bedrock Agent Action Group Handler:**
+```javascript
+exports.handler = async (event) => {
+  const { actionGroup, function: functionName, parameters } = event;
+  
+  // Extract parameters
+  const param = parameters.find(p => p.name === 'paramName');
+  const value = param ? param.value : null;
+  
+  // Process and return Bedrock Agent response format
+  return {
+    messageVersion: '1.0',
+    response: {
+      actionGroup,
+      function: functionName,
+      functionResponse: {
+        responseBody: {
+          'TEXT': { body: JSON.stringify(result) }
+        }
+      }
+    }
+  };
 };
 ```
 
@@ -250,21 +344,27 @@ const thumbnailBuffer = await sharp(imageBuffer)
   .toBuffer();
 ```
 
-### Retry Logic Pattern
+### Session Phase Transition Pattern
 
 ```javascript
-// In image-generator Lambda
-if (styleScore < threshold && retryCount < 3) {
-  const sqsClient = new SQSClient({});
-  await sqsClient.send(new SendMessageCommand({
-    QueueUrl: process.env.SQS_QUEUE_URL,
-    MessageBody: JSON.stringify({ 
-      batchId, taskId, prompt, styleProfileId, config, 
-      retryCount: retryCount + 1 
-    }),
-    DelaySeconds: Math.pow(2, retryCount)  // 1s, 2s, 4s
-  }));
-  return;
+const LEGAL_TRANSITIONS = {
+  'UPLOAD': 'SINGLE_ITERATION',
+  'SINGLE_ITERATION': 'BATCH_REVIEW',
+  'BATCH_REVIEW': 'STYLE_LOCKED',
+  'STYLE_LOCKED': 'AUTOMATION',
+  'AUTOMATION': 'COMPLETE'
+};
+
+// Validate transition
+const allowedNextPhase = LEGAL_TRANSITIONS[currentPhase];
+if (allowedNextPhase !== newPhase) {
+  return response(409, {
+    error: 'Illegal phase transition',
+    message: `Cannot transition from ${currentPhase} to ${newPhase}`,
+    currentPhase,
+    attemptedPhase: newPhase,
+    allowedPhase: allowedNextPhase
+  });
 }
 ```
 
@@ -287,6 +387,21 @@ if (styleScore < threshold && retryCount < 3) {
 8. S3 event triggers asset-tagger Lambda
 9. Nova Lite tags image, sharp generates thumbnail
 10. Updates asset record with tags and thumbnail
+
+### Session Lifecycle
+1. User creates session → session-manager (POST)
+2. Session starts in UPLOAD phase
+3. User progresses through phases → session-manager (PUT)
+4. Each phase transition validated against LEGAL_TRANSITIONS
+5. Illegal transitions return 409 Conflict
+6. Session reaches COMPLETE phase
+
+### Bedrock Agent Workflow
+1. PromptEngineerAgent invoked by user
+2. Agent calls action-get-feedback-ledger to retrieve history
+3. Agent calls action-refine-prompt with feedback
+4. Nova Lite refines prompt while preserving locked elements
+5. Updated prompt returned to user
 
 ## Documentation Structure
 

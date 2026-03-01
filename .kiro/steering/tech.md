@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Serverless-first AWS architecture with queue-driven processing and event-driven workflows.
+Serverless-first AWS architecture with queue-driven processing, event-driven workflows, and Bedrock Agent orchestration.
 
 ## Core Technologies
 
@@ -24,15 +24,20 @@ Serverless-first AWS architecture with queue-driven processing and event-driven 
 - Terraform for infrastructure as code
 
 ### AI/ML Stack
+- **Amazon Nova Micro** (text-only, ultra-low-cost)
+  - Prompt refinement
+  - PromptEngineerAgent foundation model
 - **Amazon Nova Lite** (vision + text, 50x cheaper than Claude)
   - Style analysis
   - Auto-tagging
   - Style consistency scoring
+  - QualityGatekeeperAgent foundation model
 - **Stable Image Core** (50% cheaper than SDXL, faster generation)
   - Image generation
   - 1:1 aspect ratio support
-- **Amazon Bedrock** (unified AI service)
-  - Region: ap-south-1 (Mumbai)
+- **Amazon Bedrock Agents**
+  - PromptEngineerAgent (iterative refinement)
+  - QualityGatekeeperAgent (quality control)
 
 ### Package Management
 - pnpm (v10.30.3) - specified in package.json packageManager field
@@ -57,48 +62,59 @@ Serverless-first AWS architecture with queue-driven processing and event-driven 
 - **Trigger**: API Gateway (POST /api/v1/styles)
 - **Purpose**: Analyze style references and create style profiles
 - **AI Model**: Amazon Nova Lite (`amazon.nova-lite-v1:0`)
-- **Process**:
-  1. Save reference image to S3 (`style-references/{styleProfileId}/`)
-  2. Analyze style with Nova Lite (color palette, composition, texture, lighting, art style, mood)
-  3. Store style profile in DynamoDB (`AssetQL-styles`)
+- **Process**: Save reference to S3, analyze style, store profile in DynamoDB
 
 ### 2. batch-creator
 - **Trigger**: API Gateway (POST /api/v1/batches)
 - **Purpose**: Create batch jobs from CSV input
-- **Process**:
-  1. Fetch style profile from DynamoDB
-  2. Apply prompt template with CSV variables
-  3. Append style modifiers (art style, mood, colors)
-  4. Create batch record in DynamoDB (`AssetQL-batches`)
-  5. Create task records (`AssetQL-tasks`)
-  6. Push tasks to SQS queue in batches of 10
+- **Process**: Apply prompt template, append style modifiers, create batch/task records, push to SQS
 
 ### 3. image-generator
 - **Trigger**: SQS queue messages
 - **Purpose**: Generate images with style consistency validation
-- **AI Models**: 
-  - Stable Image Core (`stability.stable-image-core-v1:0`) for generation
-  - Amazon Nova Lite for style scoring
-- **Process**:
-  1. Fetch style profile from DynamoDB
-  2. Generate image with Stable Image Core
-  3. Score style consistency with Nova Lite
-  4. Retry if score < threshold (max 3 attempts with exponential backoff)
-  5. Save image to S3 (`raw/{batchId}/{assetId}.png`)
-  6. Create asset record in DynamoDB (`AssetQL-assets`)
-  7. Update task and batch counters
+- **AI Models**: Stable Image Core + Nova Lite for scoring
+- **Process**: Generate image, score style, retry if needed, save to S3, update records
 
 ### 4. asset-tagger
 - **Trigger**: S3 event notification (new image upload)
 - **Purpose**: Auto-tag images and generate thumbnails
 - **AI Model**: Amazon Nova Lite
 - **Dependencies**: sharp (image processing)
-- **Process**:
-  1. Download image from S3
-  2. Analyze with Nova Lite (objects, scene, colors, mood, style, composition, category)
-  3. Generate 256x256 thumbnail with sharp
-  4. Upload thumbnail to S3 (`thumbnails/{assetId}_thumb.jpg`)
-  5. Update asset record with tags and thumbnail key
+- **Process**: Analyze image, generate 256x256 thumbnail, update asset record
+
+### 5. action-get-feedback-ledger
+- **Trigger**: Bedrock Agent Action Group invocation
+- **Purpose**: Retrieve feedback history for a session
+- **Process**: Query AssetQL-feedback table, sort by iterationNumber, return structured data
+
+### 6. action-refine-prompt
+- **Trigger**: Bedrock Agent Action Group invocation
+- **Purpose**: Refine prompts using AI while respecting locked elements
+- **AI Model**: Amazon Nova Lite
+- **Process**: Call Nova Lite with structured refinement prompt, parse JSON response
+
+### 7. session-manager
+- **Trigger**: API Gateway (POST/PUT/GET /api/v1/sessions)
+- **Purpose**: Manage session lifecycle with strict phase transitions
+- **Operations**:
+  - POST: Create new session
+  - PUT: Update phase (validates legal transitions)
+  - GET: Retrieve session
+- **Phase Flow**: UPLOAD → SINGLE_ITERATION → BATCH_REVIEW → STYLE_LOCKED → AUTOMATION → COMPLETE
+
+## Bedrock Agents
+
+### PromptEngineerAgent
+- **Foundation Model**: amazon.nova-micro-v1:0
+- **Action Groups**: GetFeedbackLedger, RefinePrompt
+- **Purpose**: Iterative prompt refinement based on user feedback
+- **Instruction**: "You are a prompt refinement specialist. Use the GetFeedbackLedger action to retrieve session history, then use RefinePrompt to improve the master prompt based on user feedback while preserving locked style elements."
+
+### QualityGatekeeperAgent
+- **Foundation Model**: amazon.nova-lite-v1:0
+- **Action Groups**: TriggerGeneration
+- **Purpose**: Quality control and batch state management
+- **Instruction**: "You are a quality control agent. Evaluate image generation results, manage batch state transitions, and determine when style is sufficiently locked for automation."
 
 ## Code Conventions
 
@@ -106,7 +122,7 @@ Serverless-first AWS architecture with queue-driven processing and event-driven 
 All Lambda functions import from `shared/index.js`:
 ```javascript
 const { dynamo, s3, sqs, bedrock, response,
-        GetCommand, PutCommand, UpdateCommand,
+        GetCommand, PutCommand, UpdateCommand, QueryCommand,
         PutObjectCommand, GetObjectCommand,
         SendMessageBatchCommand, InvokeModelCommand } = require('../../shared');
 ```
@@ -114,6 +130,7 @@ const { dynamo, s3, sqs, bedrock, response,
 ### Bedrock Configuration
 - **Region**: ap-south-1 (configured in shared/index.js)
 - **Models Used**:
+  - `amazon.nova-micro-v1:0` (text-only)
   - `amazon.nova-lite-v1:0` (vision + text)
   - `stability.stable-image-core-v1:0` (image generation)
 
@@ -136,8 +153,19 @@ const { dynamo, s3, sqs, bedrock, response,
 {
   prompt: "detailed prompt",
   negative_prompt: "elements to avoid",
-  aspect_ratio: "1:1",  // or "16:9", "9:16", "4:3", "3:4"
+  aspect_ratio: "1:1",
   output_format: "png"
+}
+```
+
+### Bedrock Agent Action Group Event Format
+```javascript
+{
+  actionGroup: "action-group-name",
+  function: "function-name",
+  parameters: [
+    { name: "paramName", value: "paramValue" }
+  ]
 }
 ```
 
@@ -171,6 +199,24 @@ exports.handler = async (event) => {
 };
 ```
 
+**Bedrock Agent Action Group Handler:**
+```javascript
+exports.handler = async (event) => {
+  const { actionGroup, function: functionName, parameters } = event;
+  // Extract parameters, process, return Bedrock Agent response format
+  return {
+    messageVersion: '1.0',
+    response: {
+      actionGroup,
+      function: functionName,
+      functionResponse: {
+        responseBody: { 'TEXT': { body: JSON.stringify(result) } }
+      }
+    }
+  };
+};
+```
+
 ## AWS Configuration
 
 ### Primary Region
@@ -190,14 +236,29 @@ AssetQL-assets/
 - **AssetQL-assets**: Asset metadata, tags, categories, thumbnails
 - **AssetQL-styles**: Style profiles with descriptors
 - **AssetQL-tasks**: Individual task status and retry counts
+- **AssetQL-feedback**: Feedback history per session/iteration
+- **AssetQL-sessions**: Session lifecycle management
 
 ### Lambda Environment Variables
 - `S3_BUCKET`: Asset storage bucket name
 - `SQS_QUEUE_URL`: Generation queue URL
+- `SESSIONS_TABLE_NAME`: Sessions table name
+- `FEEDBACK_TABLE_NAME`: Feedback table name
+- `DYNAMODB_STYLES_TABLE`: Styles table name
+
+## Session Lifecycle
+
+### Phase Transitions (Strict)
+```
+UPLOAD → SINGLE_ITERATION → BATCH_REVIEW → STYLE_LOCKED → AUTOMATION → COMPLETE
+```
+
+Each phase can only transition to the next phase in sequence. Illegal transitions return 409 Conflict.
 
 ## Cost Optimization Strategy
 
 ### AI Model Selection
+- **Amazon Nova Micro**: Ultra-low-cost for text-only tasks
 - **Amazon Nova Lite**: 50x cheaper than Claude 3 for vision tasks
 - **Stable Image Core**: 50% cheaper than SDXL, faster generation
 - **Batch Processing**: Process 10 tasks per SQS batch to reduce overhead
@@ -232,6 +293,7 @@ terraform destroy         # Tear down infrastructure
 - TLS 1.2+ for all API communication
 - JWT authentication via Cognito
 - Private S3 buckets (CloudFront OAI only)
+- Bedrock Agent IAM roles with scoped permissions
 - CORS headers: `Access-Control-Allow-Origin: *`
 
 ## Performance Targets
@@ -242,3 +304,4 @@ terraform destroy         # Tear down infrastructure
 - Batch of 100 images: <20 minutes
 - Thumbnail generation: <2 seconds (sharp)
 - Auto-tagging: <3 seconds (Nova Lite)
+- Session operations: <100ms (DynamoDB)

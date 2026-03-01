@@ -12,8 +12,9 @@ AssetQL is a style-locked bulk asset automation system that:
 - Generates 100-500+ style-consistent images from CSV input
 - Enforces brand consistency through AI-powered style embeddings
 - Automates tagging, categorization, and thumbnail generation
+- Provides iterative refinement workflow with Bedrock Agents
+- Manages session-based lifecycle from upload to automation
 - Provides platform-specific exports (Unity, CMS, e-commerce, social media)
-- Manages complete asset lifecycle from generation to distribution
 
 ## Target Users
 
@@ -27,10 +28,11 @@ AssetQL is a style-locked bulk asset automation system that:
 
 1. Production-scale focus (100-500+ asset batches vs. individual images)
 2. Style consistency engine with AI-powered deviation scoring
-3. End-to-end workflow automation (upload → generate → tag → deliver)
-4. AI-powered asset intelligence (auto-tagging, categorization, thumbnails)
-5. Cost-optimized AI models (Amazon Nova Lite, Stable Image Core)
-6. Serverless architecture optimized for batch economics
+3. Iterative refinement workflow with Bedrock Agent orchestration
+4. Session-based lifecycle management with strict phase transitions
+5. AI-powered asset intelligence (auto-tagging, categorization, thumbnails)
+6. Cost-optimized AI models (Amazon Nova Micro, Nova Lite, Stable Image Core)
+7. Serverless architecture optimized for batch economics
 
 ## Success Metrics
 
