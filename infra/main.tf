@@ -43,6 +43,20 @@ module "auth" {
     source = "./modules/auth"
 }
 
+resource "null_resource" "build_lambdas" {
+  # This "trigger" tells Terraform: "If any .js file in the lambdas folder changes, 
+  # run the build script again."
+  triggers = {
+    code_hash = sha256(join("", [
+      for f in fileset("${path.module}/lambdas", "**/*.js") : filesha256("${path.module}/lambdas/${f}")
+    ]))
+  }
+
+  provisioner "local-exec" {
+    # This command runs your new build script
+    command = "bash ${path.module}/build.sh"
+  }
+}
 
 module "lambdas" {
   source = "./modules/lambdas"
