@@ -125,8 +125,75 @@ resource "aws_dynamodb_table" "connections" {
   name         = "AssetQL-connections"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "connectionId"
-  attribute { 
-    name = "connectionId" 
-    type = "S" 
-    }
+
+  attribute {
+    name = "connectionId"
+    type = "S"
+  }
+
+  # ADD THIS: auto-delete stale connections after TTL expires
+  # Your Lambda should write a ttl value of: Math.floor(Date.now() / 1000) + 86400  (24 hours)
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+
+# Feedback table - stores user feedback for iterative refinement
+resource "aws_dynamodb_table" "feedback" {
+  name         = "AssetQL-feedback"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "sessionId"
+  range_key    = "iterationNumber"
+
+  attribute {
+    name = "sessionId"
+    type = "S"
+  }
+
+  attribute {
+    name = "iterationNumber"
+    type = "N"
+  }
+
+  # ADD THESE: for asset-specific feedback queries
+  attribute {
+    name = "assetId"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "assetId-index"
+    hash_key        = "assetId"
+    projection_type = "ALL"
+  }
+
+  point_in_time_recovery { enabled = true }
+}
+
+# Sessions table - tracks user refinement sessions
+resource "aws_dynamodb_table" "sessions" {
+  name         = "AssetQL-sessions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "sessionId"
+
+  attribute {
+    name = "sessionId"
+    type = "S"
+  }
+
+  # ADD THIS: needed to query sessions by user
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  # ADD THIS: so the frontend can list a user's sessions
+  global_secondary_index {
+    name            = "userId-index"
+    hash_key        = "userId"
+    projection_type = "ALL"
+  }
+
+  point_in_time_recovery { enabled = true }
 }
