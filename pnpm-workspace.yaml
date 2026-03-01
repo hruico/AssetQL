@@ -1,3 +1,8 @@
 pnpm:
   onlyBuiltDependencies:
     - sharp
+
+packages:
+  - 'frontend'
+  - 'lambdas/**'
+  - 'shared'

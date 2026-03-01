@@ -45,6 +45,11 @@ output "lambda_execution_role_arn" {
   value       = aws_iam_role.style_embedding_role.arn
 }
 
+output "lambda_execution_role_name" {
+  description = "Name of the shared Lambda execution IAM role — for attaching policies"
+  value       = aws_iam_role.style_embedding_role.name
+}
+
 output "asset_tagger_arn" {
   description = "ARN of the asset-tagger Lambda function"
   value       = aws_lambda_function.asset_tagger.arn

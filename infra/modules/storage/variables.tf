@@ -8,7 +8,5 @@ variable "project_name" {
   default = "assetql"
 }
 
-variable "asset_tagger_arn" {
-  type        = string
-  description = "ARN of the asset-tagger Lambda function"
-}
+# Removed asset_tagger_arn to break circular dependency
+# S3 event notifications will be configured separately

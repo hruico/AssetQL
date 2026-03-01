@@ -122,6 +122,24 @@ resource "aws_api_gateway_integration" "sessions_post" {
   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.session_manager_arn}/invocations"
 }
 
+# GET /sessions (list all sessions for user)
+resource "aws_api_gateway_method" "sessions_list" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.sessions.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "sessions_list" {
+  rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
+  resource_id             = aws_api_gateway_resource.sessions.id
+  http_method             = aws_api_gateway_method.sessions_list.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.session_manager_arn}/invocations"
+}
+
 # GET /sessions/{sessionId}
 resource "aws_api_gateway_method" "sessions_get" {
   rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
@@ -176,6 +194,24 @@ resource "aws_api_gateway_integration" "styles_post" {
   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.style_embedding_arn}/invocations"
 }
 
+# GET /styles (list all style profiles for user)
+resource "aws_api_gateway_method" "styles_list" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.styles.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "styles_list" {
+  rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
+  resource_id             = aws_api_gateway_resource.styles.id
+  http_method             = aws_api_gateway_method.styles_list.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.style_embedding_arn}/invocations"
+}
+
 # POST /batches
 resource "aws_api_gateway_method" "batches_post" {
   rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
@@ -212,23 +248,23 @@ resource "aws_api_gateway_integration" "feedback_post" {
   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.feedback_handler_arn}/invocations"
 }
 
-# GET /assets/{assetId}
-resource "aws_api_gateway_method" "assets_get" {
-  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
-  resource_id   = aws_api_gateway_resource.assets_id.id
-  http_method   = "GET"
-  authorization = "COGNITO_USER_POOLS"
-  authorizer_id = aws_api_gateway_authorizer.cognito.id
-}
+# GET /assets/{assetId} - TODO: Implement in Phase 3
+# resource "aws_api_gateway_method" "assets_get" {
+#   rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+#   resource_id   = aws_api_gateway_resource.assets_id.id
+#   http_method   = "GET"
+#   authorization = "COGNITO_USER_POOLS"
+#   authorizer_id = aws_api_gateway_authorizer.cognito.id
+# }
 
-resource "aws_api_gateway_integration" "assets_get" {
-  rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
-  resource_id             = aws_api_gateway_resource.assets_id.id
-  http_method             = aws_api_gateway_method.assets_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.session_manager_arn}/invocations"
-}
+# resource "aws_api_gateway_integration" "assets_get" {
+#   rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
+#   resource_id             = aws_api_gateway_resource.assets_id.id
+#   http_method             = aws_api_gateway_method.assets_get.http_method
+#   integration_http_method = "POST"
+#   type                    = "AWS_PROXY"
+#   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.session_manager_arn}/invocations"
+# }
 
 # POST /sessions/{sessionId}/automate
 resource "aws_api_gateway_method" "sessions_automate_post" {
@@ -536,50 +572,50 @@ resource "aws_api_gateway_integration_response" "feedback_options" {
   }
 }
 
-# CORS - OPTIONS /assets/{assetId}
-resource "aws_api_gateway_method" "assets_options" {
-  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
-  resource_id   = aws_api_gateway_resource.assets_id.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-}
+# CORS - OPTIONS /assets/{assetId} - TODO: Implement in Phase 3
+# resource "aws_api_gateway_method" "assets_options" {
+#   rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+#   resource_id   = aws_api_gateway_resource.assets_id.id
+#   http_method   = "OPTIONS"
+#   authorization = "NONE"
+# }
 
-resource "aws_api_gateway_integration" "assets_options" {
-  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
-  resource_id = aws_api_gateway_resource.assets_id.id
-  http_method = aws_api_gateway_method.assets_options.http_method
-  type        = "MOCK"
+# resource "aws_api_gateway_integration" "assets_options" {
+#   rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+#   resource_id = aws_api_gateway_resource.assets_id.id
+#   http_method = aws_api_gateway_method.assets_options.http_method
+#   type        = "MOCK"
 
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
-}
+#   request_templates = {
+#     "application/json" = "{\"statusCode\": 200}"
+#   }
+# }
 
-resource "aws_api_gateway_method_response" "assets_options" {
-  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
-  resource_id = aws_api_gateway_resource.assets_id.id
-  http_method = aws_api_gateway_method.assets_options.http_method
-  status_code = "200"
+# resource "aws_api_gateway_method_response" "assets_options" {
+#   rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+#   resource_id = aws_api_gateway_resource.assets_id.id
+#   http_method = aws_api_gateway_method.assets_options.http_method
+#   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
-}
+#   response_parameters = {
+#     "method.response.header.Access-Control-Allow-Origin"  = true
+#     "method.response.header.Access-Control-Allow-Headers" = true
+#     "method.response.header.Access-Control-Allow-Methods" = true
+#   }
+# }
 
-resource "aws_api_gateway_integration_response" "assets_options" {
-  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
-  resource_id = aws_api_gateway_resource.assets_id.id
-  http_method = aws_api_gateway_method.assets_options.http_method
-  status_code = aws_api_gateway_method_response.assets_options.status_code
+# resource "aws_api_gateway_integration_response" "assets_options" {
+#   rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+#   resource_id = aws_api_gateway_resource.assets_id.id
+#   http_method = aws_api_gateway_method.assets_options.http_method
+#   status_code = aws_api_gateway_method_response.assets_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
-}
+#   response_parameters = {
+#     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+#     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+#     "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
+#   }
+# }
 
 # CORS - OPTIONS /sessions/{sessionId}/automate
 resource "aws_api_gateway_method" "sessions_automate_options" {
@@ -817,8 +853,8 @@ resource "aws_api_gateway_deployment" "dev" {
   # Force redeployment on any method or integration change
   triggers = {
     redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.api_root.id,    # ← add this
-      aws_api_gateway_resource.api_v1.id,      # ← add this
+      aws_api_gateway_resource.api_root.id,
+      aws_api_gateway_resource.api_v1.id,
       aws_api_gateway_rest_api.assetql_api.body,
       aws_api_gateway_resource.sessions.id,
       aws_api_gateway_resource.sessions_id.id,
@@ -831,16 +867,32 @@ resource "aws_api_gateway_deployment" "dev" {
       aws_api_gateway_resource.assets.id,
       aws_api_gateway_resource.assets_id.id,
       aws_api_gateway_method.sessions_post.id,
+      aws_api_gateway_method.sessions_list.id,
       aws_api_gateway_method.sessions_get.id,
       aws_api_gateway_method.sessions_phase_put.id,
       aws_api_gateway_method.sessions_automate_post.id,
       aws_api_gateway_method.sessions_export_post.id,
       aws_api_gateway_method.styles_post.id,
+      aws_api_gateway_method.styles_list.id,
       aws_api_gateway_method.batches_post.id,
       aws_api_gateway_method.feedback_post.id,
-      aws_api_gateway_method.assets_get.id,
+      # aws_api_gateway_method.assets_get.id, # TODO: Uncomment in Phase 3
     ]))
   }
+
+  # Ensure all integrations are created before deployment
+  depends_on = [
+    aws_api_gateway_integration.sessions_post,
+    aws_api_gateway_integration.sessions_list,
+    aws_api_gateway_integration.sessions_get,
+    aws_api_gateway_integration.sessions_phase_put,
+    aws_api_gateway_integration.sessions_automate_post,
+    aws_api_gateway_integration.sessions_export_post,
+    aws_api_gateway_integration.styles_post,
+    aws_api_gateway_integration.styles_list,
+    aws_api_gateway_integration.batches_post,
+    aws_api_gateway_integration.feedback_post,
+  ]
 
   lifecycle {
     create_before_destroy = true

@@ -282,10 +282,11 @@ resource "aws_bedrockagent_agent_alias" "prompt_engineer_alias" {
   agent_alias_name = "live"
   description      = "Production alias for the PromptEngineer agent"
   
-  # This ensures the alias always points to the latest prepared version
-  routing_configuration {
-    agent_version = "DRAFT"
-  }
+  # Omit routing_configuration to use the latest prepared version automatically
+  depends_on = [
+    aws_bedrockagent_agent_action_group.get_feedback_ledger,
+    aws_bedrockagent_agent_action_group.refine_prompt
+  ]
 }
 
 resource "aws_bedrockagent_agent_alias" "quality_gatekeeper_alias" {
@@ -293,9 +294,7 @@ resource "aws_bedrockagent_agent_alias" "quality_gatekeeper_alias" {
   agent_alias_name = "live"
   description      = "Production alias for the QualityGatekeeper agent"
   
-  routing_configuration {
-    agent_version = "DRAFT"
-  }
+  # Omit routing_configuration to use the latest prepared version automatically
 }
 
 
@@ -307,7 +306,9 @@ resource "aws_lambda_permission" "prompt_engineer_get_feedback" {
   action        = "lambda:InvokeFunction"
   function_name = var.action_get_feedback_ledger_arn
   principal     = "bedrock.amazonaws.com"
-  source_arn    = aws_bedrockagent_agent.prompt_engineer_agent.agent_arn
+  
+  # Wait for agent to be fully created
+  depends_on = [aws_bedrockagent_agent.prompt_engineer_agent]
 }
 
 # Permission for PromptEngineerAgent to invoke action-refine-prompt
@@ -316,7 +317,9 @@ resource "aws_lambda_permission" "prompt_engineer_refine_prompt" {
   action        = "lambda:InvokeFunction"
   function_name = var.action_refine_prompt_arn
   principal     = "bedrock.amazonaws.com"
-  source_arn    = aws_bedrockagent_agent.prompt_engineer_agent.agent_arn
+  
+  # Wait for agent to be fully created
+  depends_on = [aws_bedrockagent_agent.prompt_engineer_agent]
 }
 
 # Permission for QualityGatekeeperAgent to invoke image-generator
@@ -325,7 +328,9 @@ resource "aws_lambda_permission" "quality_gatekeeper_image_generator" {
   action        = "lambda:InvokeFunction"
   function_name = var.image_generator_arn
   principal     = "bedrock.amazonaws.com"
-  source_arn    = aws_bedrockagent_agent.quality_gatekeeper_agent.agent_arn
+  
+  # Wait for agent to be fully created
+  depends_on = [aws_bedrockagent_agent.quality_gatekeeper_agent]
 }
 
 # Additional permission for action-get-feedback-ledger (can be invoked by both agents if needed)
@@ -334,5 +339,7 @@ resource "aws_lambda_permission" "quality_gatekeeper_get_feedback" {
   action        = "lambda:InvokeFunction"
   function_name = var.action_get_feedback_ledger_arn
   principal     = "bedrock.amazonaws.com"
-  source_arn    = aws_bedrockagent_agent.quality_gatekeeper_agent.agent_arn
+  
+  # Wait for agent to be fully created
+  depends_on = [aws_bedrockagent_agent.quality_gatekeeper_agent]
 }

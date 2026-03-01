@@ -18,11 +18,6 @@ variable "assets_bucket_name" {
   description = "Name of the S3 bucket for storing assets"
 }
 
-variable "environment" {
-  type        = string
-  description = "Environment name (e.g., dev, staging, prod)"
-}
-
 variable "styles_table_name" {
   type        = string
   description = "Name of the DynamoDB table for style profiles"

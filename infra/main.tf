@@ -20,11 +20,11 @@ provider "aws" {
 
 
 module "storage" {
-source = "./modules/storage"
+  source = "./modules/storage"
 
-project_name = var.project_name
-environment  = var.environment
-asset_tagger_arn = module.lambdas_core.asset_tagger_arn
+  project_name = var.project_name
+  environment  = var.environment
+  # Removed asset_tagger_arn to break circular dependency
 }
 
 output "assets_bucket_name" {
@@ -39,6 +39,16 @@ output "api_base_url" {
 output "websocket_api_endpoint" {
   description = "WebSocket API endpoint URL"
   value       = module.websocket_api.websocket_api_endpoint
+}
+
+output "cognito_user_pool_id" {
+  description = "Cognito User Pool ID for frontend authentication"
+  value       = module.auth.user_pool_id
+}
+
+output "cognito_client_id" {
+  description = "Cognito User Pool Client ID for frontend authentication"
+  value       = module.auth.user_pool_client_id
 }
 
 module "database" {
@@ -98,12 +108,13 @@ module "agents" {
 module "lambdas_api" {
   source = "./modules/lambdas-api"
 
-  environment        = var.environment
+  environment         = var.environment
   feedback_table_name = module.database.feedback_table_name
   sessions_table_name = module.database.sessions_table_name
 
   # Reuse shared IAM role from lambdas-core
-  lambda_execution_role_arn = module.lambdas_core.lambda_execution_role_arn
+  lambda_execution_role_arn  = module.lambdas_core.lambda_execution_role_arn
+  lambda_execution_role_name = module.lambdas_core.lambda_execution_role_name
 
   # Lambda Layer
   common_dependencies_layer_arn = module.layers.common_dependencies_layer_arn
@@ -141,3 +152,4 @@ module "websocket_api" {
   websocket_handler_arn = module.lambdas_core.websocket_handler_arn
   websocket_handler_invoke_arn = module.lambdas_core.websocket_handler_invoke_arn
 }
+

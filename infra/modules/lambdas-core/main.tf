@@ -8,7 +8,7 @@
 # feedback_handler Lambda needs Agent IDs. Core Lambdas → Agents → API Lambdas.
 
 resource "aws_lambda_function" "style_embedding" {
-  filename         = "../../lambdas/style-embedding.zip"
+  filename         = "${path.root}/../lambdas/style-embedding.zip"
   function_name    = "AssetQL-StyleEmbedding-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -34,7 +34,7 @@ resource "aws_lambda_function" "style_embedding" {
 }
 
 resource "aws_lambda_function" "action_get_feedback_ledger" {
-  filename         = "../../lambdas/action-get-feedback-ledger.zip"
+  filename         = "${path.root}/../lambdas/action-get-feedback-ledger.zip"
   function_name    = "AssetQL-ActionGetFeedbackLedger-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -57,7 +57,7 @@ resource "aws_lambda_function" "action_get_feedback_ledger" {
 }
 
 resource "aws_lambda_function" "action_refine_prompt" {
-  filename         = "../../lambdas/action-refine-prompt.zip"
+  filename         = "${path.root}/../lambdas/action-refine-prompt.zip"
   function_name    = "AssetQL-ActionRefinePrompt-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -79,7 +79,7 @@ resource "aws_lambda_function" "action_refine_prompt" {
 }
 
 resource "aws_lambda_function" "image_generator" {
-  filename         = "../../lambdas/image-generator.zip"
+  filename         = "${path.root}/../lambdas/image-generator.zip"
   function_name    = "AssetQL-ImageGenerator-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -121,7 +121,7 @@ resource "aws_lambda_event_source_mapping" "image_generator_sqs" {
 }
 
 resource "aws_lambda_function" "session_manager" {
-  filename         = "../../lambdas/session-manager.zip"
+  filename         = "${path.root}/../lambdas/session-manager.zip"
   function_name    = "AssetQL-SessionManager-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -143,7 +143,7 @@ resource "aws_lambda_function" "session_manager" {
 }
 
 resource "aws_lambda_function" "batch_creator" {
-  filename         = "../../lambdas/batch-creator.zip"
+  filename         = "${path.root}/../lambdas/batch-creator.zip"
   function_name    = "AssetQL-BatchCreator-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -169,7 +169,7 @@ resource "aws_lambda_function" "batch_creator" {
 }
 
 resource "aws_lambda_function" "automation_trigger" {
-  filename         = "../../lambdas/automation-trigger.zip"
+  filename         = "${path.root}/../lambdas/automation-trigger.zip"
   function_name    = "AssetQL-AutomationTrigger-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -193,7 +193,7 @@ resource "aws_lambda_function" "automation_trigger" {
 }
 
 resource "aws_lambda_function" "export_handler" {
-  filename         = "../../lambdas/export-handler.zip"
+  filename         = "${path.root}/../lambdas/export-handler.zip"
   function_name    = "AssetQL-ExportHandler-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -220,7 +220,7 @@ resource "aws_lambda_function" "export_handler" {
 }
 
 resource "aws_lambda_function" "asset_tagger" {
-  filename         = "../../lambdas/asset-tagger.zip"
+  filename         = "${path.root}/../lambdas/asset-tagger.zip"
   function_name    = "AssetQL-AssetTagger-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -246,7 +246,7 @@ resource "aws_lambda_function" "asset_tagger" {
 }
 
 resource "aws_lambda_function" "websocket_handler" {
-  filename         = "../../lambdas/websocket-handler.zip"
+  filename         = "${path.root}/../lambdas/websocket-handler.zip"
   function_name    = "AssetQL-WebSocketHandler-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -292,7 +292,7 @@ resource "aws_lambda_event_source_mapping" "websocket_handler_streams" {
 }
 
 resource "aws_lambda_function" "export_orchestrator" {
-  filename         = "../../lambdas/export-orchestrator.zip"
+  filename         = "${path.root}/../lambdas/export-orchestrator.zip"
   function_name    = "AssetQL-ExportOrchestrator-${var.environment}"
   role            = aws_iam_role.style_embedding_role.arn
   handler         = "index.handler"
@@ -385,7 +385,8 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
         Action = [
           "sqs:SendMessage",
           "sqs:ReceiveMessage",
-          "sqs:DeleteMessage"
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
         ]
         Resource = [
             var.sqs_queue_arn
@@ -417,6 +418,18 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
           "arn:aws:dynamodb:*:*:table/${var.batches_table_name}/index/*",
           "arn:aws:dynamodb:*:*:table/${var.assets_table_name}",
           "arn:aws:dynamodb:*:*:table/${var.assets_table_name}/index/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetRecords",
+          "dynamodb:GetShardIterator",
+          "dynamodb:DescribeStream",
+          "dynamodb:ListStreams"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}/stream/*"
         ]
       }
     ]
