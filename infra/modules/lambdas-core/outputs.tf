@@ -44,3 +44,23 @@ output "lambda_execution_role_arn" {
   description = "ARN of the shared Lambda execution IAM role — reused by lambdas-api module"
   value       = aws_iam_role.style_embedding_role.arn
 }
+
+output "asset_tagger_arn" {
+  description = "ARN of the asset-tagger Lambda function"
+  value       = aws_lambda_function.asset_tagger.arn
+}
+
+output "websocket_handler_arn" {
+  description = "ARN of the websocket-handler Lambda function"
+  value       = aws_lambda_function.websocket_handler.arn
+}
+
+output "websocket_handler_invoke_arn" {
+  description = "Invoke ARN of the websocket-handler Lambda function"
+  value       = aws_lambda_function.websocket_handler.invoke_arn
+}
+
+output "export_orchestrator_arn" {
+  description = "ARN of the export-orchestrator Lambda function"
+  value       = aws_lambda_function.export_orchestrator.arn
+}

@@ -30,3 +30,26 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
     }
   }
 }
+
+# Lambda permission for S3 to invoke asset-tagger
+resource "aws_lambda_permission" "asset_tagger_s3" {
+  statement_id  = "AllowS3InvokeAssetTagger"
+  action        = "lambda:InvokeFunction"
+  function_name = var.asset_tagger_arn
+  principal     = "s3.amazonaws.com"
+  source_arn    = aws_s3_bucket.assets.arn
+}
+
+# S3 Event Notification to trigger asset-tagger
+resource "aws_s3_bucket_notification" "asset_uploads" {
+  bucket = aws_s3_bucket.assets.id
+
+  lambda_function {
+    lambda_function_arn = var.asset_tagger_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "raw/"  # Only trigger for images in raw/ folder
+    filter_suffix       = ".png"  # Only trigger for PNG files
+  }
+
+  depends_on = [aws_lambda_permission.asset_tagger_s3]
+}

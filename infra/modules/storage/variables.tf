@@ -7,3 +7,8 @@ variable "environment" {
 variable "project_name" {
   default = "assetql"
 }
+
+variable "asset_tagger_arn" {
+  type        = string
+  description = "ARN of the asset-tagger Lambda function"
+}

@@ -27,3 +27,8 @@ variable "prompt_engineer_alias_id" {
   type        = string
   description = "Alias ID of the PromptEngineer Bedrock Agent for invocation"
 }
+
+variable "common_dependencies_layer_arn" {
+  type        = string
+  description = "ARN of the common dependencies Lambda Layer"
+}

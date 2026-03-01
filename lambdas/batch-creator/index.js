@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { dynamo, sqs, response, PutCommand, UpdateCommand, SendMessageBatchCommand } = require('../../shared');
+const { dynamo, sqs, response, PutCommand, UpdateCommand, SendMessageBatchCommand, GetCommand } = require('../../shared');
 
 
 exports.handler = async (event) => {
@@ -13,7 +13,7 @@ exports.handler = async (event) => {
   const batchId = uuidv4();
   const totalTasks = csvRows.length;
  // 1. Fetch style profile to get descriptors
-  const styleRes = await dynamo.send(new GetCommand({ TableName: 'AssetQL-styles', Key: { styleProfileId } }));
+  const styleRes = await dynamo.send(new GetCommand({ TableName: process.env.STYLES_TABLE_NAME, Key: { styleProfileId } }));
   const style = styleRes.Item;
 
 
@@ -29,7 +29,7 @@ exports.handler = async (event) => {
 
   
   await dynamo.send(new PutCommand({
-    TableName: 'AssetQL-batches',
+    TableName: process.env.BATCHES_TABLE_NAME,
     Item: { batchId, userId, name: batchName, status: 'queued', totalTasks,
             completedTasks: 0, failedTasks: 0, styleProfileId, config, createdAt: Date.now() }
   }));
@@ -42,7 +42,7 @@ exports.handler = async (event) => {
 
     // Insert task records to DynamoDB
     await Promise.all(chunk.map(task => dynamo.send(new PutCommand({
-      TableName: 'AssetQL-tasks',
+      TableName: process.env.TASKS_TABLE_NAME,
       Item: { taskId: task.taskId, batchId, status: 'queued', prompt: task.prompt,
               metadata: task.metadata, retryCount: 0, createdAt: Date.now() }
     }))));

@@ -24,6 +24,7 @@ source = "./modules/storage"
 
 project_name = var.project_name
 environment  = var.environment
+asset_tagger_arn = module.lambdas_core.asset_tagger_arn
 }
 
 output "assets_bucket_name" {
@@ -33,6 +34,11 @@ output "assets_bucket_name" {
 output "api_base_url" {
   description = "Base URL for the AssetQL API"
   value       = module.api_gateway.api_base_url
+}
+
+output "websocket_api_endpoint" {
+  description = "WebSocket API endpoint URL"
+  value       = module.websocket_api.websocket_api_endpoint
 }
 
 module "database" {
@@ -46,20 +52,35 @@ module "queues" {
   # Same — check if queues/variables.tf has required variables
 }
 
+module "layers" {
+  source = "./modules/layers"
+  environment = var.environment
+}
+
 module "lambdas_core" {
   source             = "./modules/lambdas-core"
   assets_bucket_name = module.storage.assets_bucket_name
   environment        = var.environment
+
+  # Lambda Layers
+  common_dependencies_layer_arn = module.layers.common_dependencies_layer_arn
+  image_processing_layer_arn    = module.layers.image_processing_layer_arn
 
   # Database table names
   styles_table_name   = module.database.styles_table_name
   feedback_table_name = module.database.feedback_table_name
   sessions_table_name = module.database.sessions_table_name
   tasks_table_name    = module.database.tasks_table_name
+  batches_table_name  = module.database.batches_table_name
+  assets_table_name   = module.database.assets_table_name
+  connections_table_name = module.database.connections_table_name
 
   # SQS queue configuration
   sqs_queue_url = module.queues.queue_url
   sqs_queue_arn = module.queues.queue_arn
+  
+  # DynamoDB Streams
+  tasks_table_stream_arn = module.database.tasks_table_stream_arn
 }
 
 module "auth" {
@@ -83,6 +104,9 @@ module "lambdas_api" {
 
   # Reuse shared IAM role from lambdas-core
   lambda_execution_role_arn = module.lambdas_core.lambda_execution_role_arn
+
+  # Lambda Layer
+  common_dependencies_layer_arn = module.layers.common_dependencies_layer_arn
 
   # Bedrock Agent configuration
   prompt_engineer_agent_id = module.agents.prompt_engineer_agent_id
@@ -108,4 +132,12 @@ module "api_gateway" {
   # Automation and export Lambda ARNs from lambdas-core module
   automation_trigger_arn = module.lambdas_core.automation_trigger_arn
   export_handler_arn     = module.lambdas_core.export_handler_arn
+}
+
+module "websocket_api" {
+  source = "./modules/websocket-api"
+
+  environment        = var.environment
+  websocket_handler_arn = module.lambdas_core.websocket_handler_arn
+  websocket_handler_invoke_arn = module.lambdas_core.websocket_handler_invoke_arn
 }

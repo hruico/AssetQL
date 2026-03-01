@@ -16,6 +16,8 @@ resource "aws_lambda_function" "style_embedding" {
   memory_size     = 1024
   timeout         = 30
 
+  layers = [var.common_dependencies_layer_arn]
+
   environment {
     variables = {
       S3_BUCKET = var.assets_bucket_name
@@ -40,6 +42,8 @@ resource "aws_lambda_function" "action_get_feedback_ledger" {
   memory_size     = 256
   timeout         = 30
 
+  layers = [var.common_dependencies_layer_arn]
+
   environment {
     variables = {
       FEEDBACK_TABLE_NAME = var.feedback_table_name
@@ -61,6 +65,8 @@ resource "aws_lambda_function" "action_refine_prompt" {
   memory_size     = 512
   timeout         = 60
 
+  layers = [var.common_dependencies_layer_arn]
+
   environment {
     variables = {
       SESSIONS_TABLE_NAME = var.sessions_table_name
@@ -81,15 +87,36 @@ resource "aws_lambda_function" "image_generator" {
   memory_size     = 1024
   timeout         = 300
 
+  layers = [var.common_dependencies_layer_arn]
+
   environment {
     variables = {
       S3_BUCKET = var.assets_bucket_name
       SQS_QUEUE_URL = var.sqs_queue_url
+      STYLES_TABLE_NAME = var.styles_table_name
+      TASKS_TABLE_NAME = var.tasks_table_name
+      BATCHES_TABLE_NAME = var.batches_table_name
+      ASSETS_TABLE_NAME = var.assets_table_name
     }
   }
 
   tracing_config {
     mode = "Active"
+  }
+}
+
+# SQS Event Source Mapping for image-generator
+resource "aws_lambda_event_source_mapping" "image_generator_sqs" {
+  event_source_arn = var.sqs_queue_arn
+  function_name    = aws_lambda_function.image_generator.arn
+  batch_size       = 1  # Process one message at a time for better error handling
+  enabled          = true
+
+  # Retry configuration
+  function_response_types = ["ReportBatchItemFailures"]
+  
+  scaling_config {
+    maximum_concurrency = 10  # Max 10 concurrent executions
   }
 }
 
@@ -101,6 +128,8 @@ resource "aws_lambda_function" "session_manager" {
   runtime         = "nodejs20.x"
   memory_size     = 256
   timeout         = 30
+
+  layers = [var.common_dependencies_layer_arn]
 
   environment {
     variables = {
@@ -122,11 +151,15 @@ resource "aws_lambda_function" "batch_creator" {
   memory_size     = 512
   timeout         = 60
 
+  layers = [var.common_dependencies_layer_arn]
+
   environment {
     variables = {
       S3_BUCKET = var.assets_bucket_name
       SQS_QUEUE_URL = var.sqs_queue_url
-      DYNAMODB_STYLES_TABLE  = var.styles_table_name
+      STYLES_TABLE_NAME = var.styles_table_name
+      BATCHES_TABLE_NAME = var.batches_table_name
+      TASKS_TABLE_NAME = var.tasks_table_name
     }
   }
 
@@ -143,6 +176,8 @@ resource "aws_lambda_function" "automation_trigger" {
   runtime         = "nodejs20.x"
   memory_size     = 256
   timeout         = 30
+
+  layers = [var.common_dependencies_layer_arn]
 
   environment {
     variables = {
@@ -166,11 +201,114 @@ resource "aws_lambda_function" "export_handler" {
   memory_size     = 1024
   timeout         = 300
 
+  layers = [
+    var.common_dependencies_layer_arn,
+    var.image_processing_layer_arn
+  ]
+
   environment {
     variables = {
       S3_BUCKET = var.assets_bucket_name
       SESSIONS_TABLE_NAME = var.sessions_table_name
       TASKS_TABLE_NAME = var.tasks_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "asset_tagger" {
+  filename         = "../../lambdas/asset-tagger.zip"
+  function_name    = "AssetQL-AssetTagger-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 1024
+  timeout         = 60
+
+  layers = [
+    var.common_dependencies_layer_arn,
+    var.image_processing_layer_arn
+  ]
+
+  environment {
+    variables = {
+      S3_BUCKET = var.assets_bucket_name
+      ASSETS_TABLE_NAME = var.assets_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "websocket_handler" {
+  filename         = "../../lambdas/websocket-handler.zip"
+  function_name    = "AssetQL-WebSocketHandler-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 256
+  timeout         = 30
+
+  layers = [var.common_dependencies_layer_arn]
+
+  environment {
+    variables = {
+      CONNECTIONS_TABLE_NAME = var.connections_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+# DynamoDB Streams Event Source Mapping for websocket-handler
+resource "aws_lambda_event_source_mapping" "websocket_handler_streams" {
+  event_source_arn  = var.tasks_table_stream_arn
+  function_name     = aws_lambda_function.websocket_handler.arn
+  starting_position = "LATEST"
+  batch_size        = 10
+  enabled           = true
+
+  filter_criteria {
+    filter {
+      pattern = jsonencode({
+        eventName = ["MODIFY"]
+        dynamodb = {
+          NewImage = {
+            status = {
+              S = ["completed", "failed"]
+            }
+          }
+        }
+      })
+    }
+  }
+}
+
+resource "aws_lambda_function" "export_orchestrator" {
+  filename         = "../../lambdas/export-orchestrator.zip"
+  function_name    = "AssetQL-ExportOrchestrator-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 1024
+  timeout         = 300
+
+  layers = [
+    var.common_dependencies_layer_arn,
+    var.image_processing_layer_arn
+  ]
+
+  environment {
+    variables = {
+      S3_BUCKET = var.assets_bucket_name
+      ASSETS_TABLE_NAME = var.assets_table_name
     }
   }
 
@@ -261,12 +399,25 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
           "s3:DeleteObject"
         ]
         Resource = [
-          "arn:aws:dynamodb:*:*:table/${var.feedback_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.sessions_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.styles_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}",           # ← add this
-          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}/index/*"    # ← and this for GSI
-        ]      
+          "arn:aws:s3:::${var.assets_bucket_name}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:Query"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}/index/*",
+          "arn:aws:dynamodb:*:*:table/${var.batches_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.batches_table_name}/index/*",
+          "arn:aws:dynamodb:*:*:table/${var.assets_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.assets_table_name}/index/*"
+        ]
       }
     ]
   })

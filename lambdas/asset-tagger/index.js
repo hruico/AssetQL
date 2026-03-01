@@ -68,7 +68,7 @@ exports.handler = async (event) => {
 
   // 4. Update asset record in DynamoDB with tags and thumbnail
   await dynamo.send(new UpdateCommand({
-    TableName: 'AssetQL-assets',
+    TableName: process.env.ASSETS_TABLE_NAME,
     Key: { assetId },
     UpdateExpression: 'SET tags = :tags, category = :cat, thumbnailS3Key = :thumb',
     ExpressionAttributeValues: { ':tags': tags, ':cat': tagData.category, ':thumb': thumbnailKey }

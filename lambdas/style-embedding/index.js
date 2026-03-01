@@ -49,12 +49,15 @@ exports.handler = async (event) => {
     contentType: 'application/json'
   }));
   const responseBody = JSON.parse(Buffer.from(bedrockRes.body).toString());
-  const styleDescriptors = JSON.parse(responseBody.output.message.content[0].text);
+  const rawText  = JSON.parse(responseBody.output.message.content[0].text);
+
+  const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+  const styleDescriptors = JSON.parse(cleanText);
 
 
   // 3. Save style profile to DynamoDB
   await dynamo.send(new PutCommand({
-    TableName: 'AssetQL-styles',
+    TableName: process.env.STYLES_TABLE_NAME,
     Item: {
       styleProfileId, userId,
       name: body.name,

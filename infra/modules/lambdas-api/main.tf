@@ -13,6 +13,8 @@ resource "aws_lambda_function" "feedback_handler" {
   memory_size   = 512
   timeout       = 120
 
+  layers = [var.common_dependencies_layer_arn]
+
   environment {
     variables = {
       FEEDBACK_TABLE_NAME      = var.feedback_table_name

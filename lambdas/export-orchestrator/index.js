@@ -28,7 +28,7 @@ exports.handler = async (event) => {
   archive.pipe(passThrough);
   // Fetch and process each asset
   for (const assetId of assetIds) {
-    const assetRes = await dynamo.send(new GetCommand({ TableName: 'AssetQL-assets', Key: { assetId } }));
+    const assetRes = await dynamo.send(new GetCommand({ TableName: process.env.ASSETS_TABLE_NAME, Key: { assetId } }));
     const asset = assetRes.Item;
     const s3Res = await s3.send(new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: asset.s3Key }));
     const imgBuffer = Buffer.concat(await s3Res.Body.toArray());

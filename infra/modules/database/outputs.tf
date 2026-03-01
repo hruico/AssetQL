@@ -34,3 +34,8 @@ output "sessions_table_name" {
   description = "Name of the sessions DynamoDB table"
   value       = aws_dynamodb_table.sessions.name
 }
+
+output "tasks_table_stream_arn" {
+  description = "ARN of the DynamoDB Streams for tasks table"
+  value       = aws_dynamodb_table.tasks.stream_arn
+}
