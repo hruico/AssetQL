@@ -1,41 +1,39 @@
-# Local .terraform directory (contains large binaries)
-**/.terraform/*
-
-# State files (contains your secrets in plain text)
-*.tfstate
-*.tfstate.*
-
-# Variables files (if they contain real secrets)
-*.tfvars
-*.tfvars.json
-
-# Crash logs
-crash.log
-
-# OS generated files
-.DS_Store
-
-infra/.terraform/
-infra/*.tfstate
-infra/*.tfstate.backup
-
-# Node modules
+# Dependencies
 node_modules/
 
-# Lambda build artifacts (build with build.sh before deploying)
+# Build outputs
+.next/
+out/
+dist/
+build/
+
+# Lambda artifacts
 lambdas/**/*.zip
 layers/**/*.zip
 layers/nodejs/
-dist/
+layers-dist/
 
-# Environment files with actual secrets (DO NOT COMMIT)
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+
+# Environment files (NEVER COMMIT)
+.env
 .env.local
-.env.*.local
+.env*.local
+config.private.sh
 
-# Frontend build artifacts (generated during build)
-frontend/.next/
-frontend/out/
-frontend/build/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
 # Logs
 *.log
@@ -44,13 +42,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
 # Testing
 coverage/
 .nyc_output/
+
+# Temporary files
+*.tmp
+*.temp

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# AssetQL Private Configuration Template
+# Copy this file to config.private.sh and fill in your values
+# DO NOT commit config.private.sh to git
+
+# AWS Configuration
+export AWS_REGION="ap-south-1"
+export AMPLIFY_APP_ID="<YOUR_AMPLIFY_APP_ID>"
+
+# API Endpoints (get from: cd infra && terraform output)
+export API_BASE_URL="<YOUR_API_GATEWAY_URL>/api/v1"
+export WEBSOCKET_URL="<YOUR_WEBSOCKET_URL>"
+
+# Cognito Configuration (get from: aws cognito-idp list-user-pools)
+export COGNITO_USER_POOL_ID="<YOUR_USER_POOL_ID>"
+export COGNITO_CLIENT_ID="<YOUR_CLIENT_ID>"
+
+# S3 Configuration
+export ASSETS_BUCKET="<YOUR_S3_BUCKET_NAME>"
+
+echo "✅ Private configuration loaded"

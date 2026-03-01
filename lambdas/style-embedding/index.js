@@ -22,31 +22,62 @@ exports.handler = async (event) => {
  * Creates a new style profile from a reference image
  */
 async function createStyleProfile(event) {
-  const userId = event.requestContext.authorizer.claims.sub;
-  const body = JSON.parse(event.body);
-  // body contains: { name, imageBase64, imageType, lockedParams, deviationThreshold }
+  try {
+    const userId = event.requestContext.authorizer.claims.sub;
+    
+    // Handle multipart/form-data from frontend
+    let imageBuffer, imageType, name;
+    
+    if (event.isBase64Encoded && event.body) {
+      // Parse multipart form data
+      const boundary = event.headers['content-type'].split('boundary=')[1];
+      const parts = Buffer.from(event.body, 'base64').toString('binary').split(`--${boundary}`);
+      
+      for (const part of parts) {
+        if (part.includes('Content-Disposition: form-data; name="referenceImage"')) {
+          // Extract filename and content type
+          const filenameMatch = part.match(/filename="(.+?)"/);
+          const filename = filenameMatch ? filenameMatch[1] : 'image.png';
+          imageType = filename.split('.').pop().toLowerCase();
+          
+          // Extract binary data (after double CRLF)
+          const dataStart = part.indexOf('\r\n\r\n') + 4;
+          const dataEnd = part.lastIndexOf('\r\n');
+          imageBuffer = Buffer.from(part.substring(dataStart, dataEnd), 'binary');
+          
+          // Use filename as name if not provided
+          name = filename.replace(/\.[^/.]+$/, '');
+        }
+      }
+    } else {
+      // Fallback: JSON body with base64
+      const body = JSON.parse(event.body);
+      imageBuffer = Buffer.from(body.imageBase64, 'base64');
+      imageType = body.imageType;
+      name = body.name;
+    }
 
+    if (!imageBuffer) {
+      return response(400, { error: 'No image provided' });
+    }
 
-  const styleProfileId = uuidv4();
+    const styleProfileId = uuidv4();
 
+    // 1. Save the reference image to S3
+    await s3.send(new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: `style-references/${styleProfileId}/reference.${imageType}`,
+      Body: imageBuffer,
+      ContentType: `image/${imageType}`
+    }));
 
-  // 1. Save the reference image to S3
-  const imageBuffer = Buffer.from(body.imageBase64, 'base64');
-  await s3.send(new PutObjectCommand({
-    Bucket: process.env.S3_BUCKET,
-    Key: `style-references/${styleProfileId}/reference.${body.imageType}`,
-    Body: imageBuffer,
-    ContentType: `image/${body.imageType}`
-  }));
-
-
-  // 2. Call Bedrock Nova Lite to analyze the style (50x cheaper than Claude)
-  const bedrockPayload = {
-    messages: [{
-      role: 'user',
-      content: [
-        { image: { format: body.imageType, source: { bytes: imageBuffer } } },
-        { text: `Analyze the visual style of this image and return ONLY a JSON object (no explanation) with these exact fields:
+    // 2. Call Bedrock Nova Lite to analyze the style (50x cheaper than Claude)
+    const bedrockPayload = {
+      messages: [{
+        role: 'user',
+        content: [
+          { image: { format: imageType === 'jpg' ? 'jpeg' : imageType, source: { bytes: imageBuffer } } },
+          { text: `Analyze the visual style of this image and return ONLY a JSON object (no explanation) with these exact fields:
 {
   "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"],
   "composition": "description of layout and composition",
@@ -56,40 +87,43 @@ async function createStyleProfile(event) {
   "mood": "1-3 words describing the emotional atmosphere",
   "negativePrompt": "elements to avoid for style consistency"
 }` }
-      ]
-    }],
-    inferenceConfig: { maxTokens: 1024, temperature: 0.3 }
-  };
+        ]
+      }],
+      inferenceConfig: { maxTokens: 1024, temperature: 0.3 }
+    };
 
+    const bedrockRes = await bedrock.send(new InvokeModelCommand({
+      modelId: 'amazon.nova-lite-v1:0',
+      body: JSON.stringify(bedrockPayload),
+      contentType: 'application/json'
+    }));
+    const responseBody = JSON.parse(Buffer.from(bedrockRes.body).toString());
+    const rawText = responseBody.output.message.content[0].text;
 
-  const bedrockRes = await bedrock.send(new InvokeModelCommand({
-    modelId: 'amazon.nova-lite-v1:0',
-    body: JSON.stringify(bedrockPayload),
-    contentType: 'application/json'
-  }));
-  const responseBody = JSON.parse(Buffer.from(bedrockRes.body).toString());
-  const rawText  = JSON.parse(responseBody.output.message.content[0].text);
+    const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+    const styleDescriptors = JSON.parse(cleanText);
 
-  const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
-  const styleDescriptors = JSON.parse(cleanText);
+    // 3. Save style profile to DynamoDB
+    await dynamo.send(new PutCommand({
+      TableName: process.env.STYLES_TABLE_NAME,
+      Item: {
+        styleProfileId,
+        userId,
+        name: name || 'Untitled Style',
+        referenceImageKey: `style-references/${styleProfileId}/reference.${imageType}`,
+        descriptors: styleDescriptors,
+        lockedParams: [],
+        deviationThreshold: 85,
+        createdAt: Date.now()
+      }
+    }));
 
-
-  // 3. Save style profile to DynamoDB
-  await dynamo.send(new PutCommand({
-    TableName: process.env.STYLES_TABLE_NAME,
-    Item: {
-      styleProfileId, userId,
-      name: body.name,
-      referenceImageKey: `style-references/${styleProfileId}/reference.${body.imageType}`,
-      descriptors: styleDescriptors,
-      lockedParams: body.lockedParams || [],
-      deviationThreshold: body.deviationThreshold || 85,
-      createdAt: Date.now()
-    }
-  }));
-
-
-  return response(201, { styleProfileId, descriptors: styleDescriptors });
+    return response(201, { styleProfile: { styleProfileId, name, descriptors: styleDescriptors } });
+    
+  } catch (error) {
+    console.error('Error creating style profile:', error);
+    return response(500, { error: 'Failed to create style profile', details: error.message });
+  }
 }
 
 /**
