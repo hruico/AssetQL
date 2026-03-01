@@ -25,3 +25,28 @@ output "session_manager_arn" {
   description = "ARN of the session-manager Lambda function"
   value       = aws_lambda_function.session_manager.arn
 }
+
+output "asset_tagger_arn" {
+  description = "ARN of the asset-tagger Lambda function"
+  value       = aws_lambda_function.asset_tagger.arn
+}
+
+output "batch_creator_arn" {
+  description = "ARN of the batch-creator Lambda function"
+  value       = aws_lambda_function.batch_creator.arn
+}
+
+output "export_orchestrator_arn" {
+  description = "ARN of the export-orchestrator Lambda function"
+  value       = aws_lambda_function.export_orchestrator.arn
+}
+
+output "websocket_handler_arn" {
+  description = "ARN of the websocket-handler Lambda function"
+  value       = aws_lambda_function.websocket_handler.arn
+}
+
+output "feedback_submitter_arn" {
+  description = "ARN of the feedback-submitter Lambda function"
+  value       = aws_lambda_function.feedback_submitter.arn
+}

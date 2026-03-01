@@ -54,7 +54,7 @@ exports.handler = async (event) => {
 
   // 3. Save style profile to DynamoDB
   await dynamo.send(new PutCommand({
-    TableName: 'AssetQL-styles',
+    TableName: process.env.STYLES_TABLE_NAME,
     Item: {
       styleProfileId, userId,
       name: body.name,

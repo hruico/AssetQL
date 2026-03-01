@@ -9,11 +9,8 @@ resource "aws_lambda_function" "style_embedding" {
 
   environment {
     variables = {
-      S3_BUCKET = var.assets_bucket_name
-      DYNAMODB_STYLES_TABLE = var.styles_table_name
-      FEEDBACK_TABLE_NAME = var.feedback_table_name
-      SESSIONS_TABLE_NAME = var.sessions_table_name
-      SQS_QUEUE_URL = var.sqs_queue_url
+      S3_BUCKET         = var.assets_bucket_name
+      STYLES_TABLE_NAME = var.styles_table_name
     }
   }
 
@@ -75,8 +72,12 @@ resource "aws_lambda_function" "image_generator" {
 
   environment {
     variables = {
-      S3_BUCKET = var.assets_bucket_name
-      SQS_QUEUE_URL = var.sqs_queue_url
+      S3_BUCKET         = var.assets_bucket_name
+      SQS_QUEUE_URL     = var.sqs_queue_url
+      STYLES_TABLE_NAME = var.styles_table_name
+      ASSETS_TABLE_NAME = var.assets_table_name
+      TASKS_TABLE_NAME  = var.tasks_table_name
+      BATCHES_TABLE_NAME = var.batches_table_name
     }
   }
 
@@ -122,12 +123,18 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
-          "dynamodb:Query"
+          "dynamodb:Query",
+          "dynamodb:Scan"
         ]
         Resource = [
           "arn:aws:dynamodb:*:*:table/${var.feedback_table_name}",
           "arn:aws:dynamodb:*:*:table/${var.sessions_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.styles_table_name}"
+          "arn:aws:dynamodb:*:*:table/${var.styles_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.batches_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.assets_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.connections_table_name}",
+          "arn:aws:dynamodb:*:*:table/${var.connections_table_name}/index/*"
         ]
       },
       {
@@ -137,7 +144,8 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
         ]
         Resource = [
           "arn:aws:bedrock:*::foundation-model/amazon.nova-micro-v1:0",
-          "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0"
+          "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0",
+          "arn:aws:bedrock:*::foundation-model/stability.stable-image-core-v1:0"
         ]
       },
       {
@@ -154,11 +162,10 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
       {
         Effect = "Allow"
         Action = [
-          "s3:PutObject",      # writing generated images to S3
-          "s3:GetObject",      # reading reference images for style analysis
-          "s3:DeleteObject"    # cleanup if needed
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
         ]
-        # S3 ARNs don't include region or account — just the bucket name and path
         Resource = "arn:aws:s3:::${var.assets_bucket_name}/*"
       }
     ]
@@ -178,6 +185,112 @@ resource "aws_lambda_function" "session_manager" {
   environment {
     variables = {
       SESSIONS_TABLE_NAME = var.sessions_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "asset_tagger" {
+  filename         = "../../lambdas/asset-tagger.zip"
+  function_name    = "AssetQL-AssetTagger-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 512
+  timeout         = 60
+
+  environment {
+    variables = {
+      S3_BUCKET         = var.assets_bucket_name
+      ASSETS_TABLE_NAME = var.assets_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "batch_creator" {
+  filename         = "../../lambdas/batch-creator.zip"
+  function_name    = "AssetQL-BatchCreator-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 512
+  timeout         = 60
+
+  environment {
+    variables = {
+      STYLES_TABLE_NAME  = var.styles_table_name
+      BATCHES_TABLE_NAME = var.batches_table_name
+      TASKS_TABLE_NAME   = var.tasks_table_name
+      SQS_QUEUE_URL      = var.sqs_queue_url
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "export_orchestrator" {
+  filename         = "../../lambdas/export-orchestrator.zip"
+  function_name    = "AssetQL-ExportOrchestrator-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 1024
+  timeout         = 300
+
+  environment {
+    variables = {
+      S3_BUCKET         = var.assets_bucket_name
+      ASSETS_TABLE_NAME = var.assets_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "websocket_handler" {
+  filename         = "../../lambdas/websocket-handler.zip"
+  function_name    = "AssetQL-WebSocketHandler-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 256
+  timeout         = 30
+
+  environment {
+    variables = {
+      CONNECTIONS_TABLE_NAME = var.connections_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
+resource "aws_lambda_function" "feedback_submitter" {
+  filename         = "../../lambdas/feedback-submitter.zip"
+  function_name    = "AssetQL-FeedbackSubmitter-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 256
+  timeout         = 30
+
+  environment {
+    variables = {
+      SESSIONS_TABLE_NAME = var.sessions_table_name
+      FEEDBACK_TABLE_NAME = var.feedback_table_name
     }
   }
 

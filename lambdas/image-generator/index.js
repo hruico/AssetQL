@@ -24,7 +24,7 @@ exports.handler = async (event) => {
 
 
   // 2. Fetch style profile descriptors
-  const styleRes = await dynamo.send(new GetCommand({ TableName: 'AssetQL-styles', Key: { styleProfileId } }));
+  const styleRes = await dynamo.send(new GetCommand({ TableName: process.env.STYLES_TABLE_NAME, Key: { styleProfileId } }));
   const style = styleRes.Item;
   const negativePrompt = style.descriptors.negativePrompt || 'blurry, low quality, distorted';
 
@@ -108,7 +108,7 @@ Return ONLY a JSON object: {"score": <number>}` }
 
   // 7. Create the asset record in DynamoDB
   await dynamo.send(new PutCommand({
-    TableName: 'AssetQL-assets',
+    TableName: process.env.ASSETS_TABLE_NAME,
     Item: { assetId, batchId, userId: 'unknown', s3Key,
             prompt, styleScore, dimensions: { width: config.width || 1024, height: config.height || 1024 },
             createdAt: Date.now(), tags: [], category: 'uncategorized' }
@@ -117,14 +117,14 @@ Return ONLY a JSON object: {"score": <number>}` }
 
   // 8. Mark task as completed, increment batch counter
   await dynamo.send(new UpdateCommand({
-    TableName: 'AssetQL-tasks',
+    TableName: process.env.TASKS_TABLE_NAME,
     Key: { taskId, batchId },
     UpdateExpression: 'SET #s = :s, assetId = :a, processingEndTime = :t',
     ExpressionAttributeNames: { '#s': 'status' },
     ExpressionAttributeValues: { ':s': 'completed', ':a': assetId, ':t': Date.now() }
   }));
   await dynamo.send(new UpdateCommand({
-    TableName: 'AssetQL-batches',
+    TableName: process.env.BATCHES_TABLE_NAME,
     Key: { batchId },
     UpdateExpression: 'ADD completedTasks :one',
     ExpressionAttributeValues: { ':one': 1 }

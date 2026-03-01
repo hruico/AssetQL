@@ -131,6 +131,19 @@ resource "aws_dynamodb_table" "connections" {
     type = "S"
   }
 
+  # ADD THIS: needed for querying connections by userId
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  # ADD THIS: so WebSocket handler can find all connections for a user
+  global_secondary_index {
+    name            = "userId-index"
+    hash_key        = "userId"
+    projection_type = "ALL"
+  }
+
   # ADD THIS: auto-delete stale connections after TTL expires
   # Your Lambda should write a ttl value of: Math.floor(Date.now() / 1000) + 86400  (24 hours)
   ttl {

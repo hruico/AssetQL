@@ -47,9 +47,13 @@ module "lambdas" {
   environment        = var.environment
 
   # Database table names
-  styles_table_name   = module.database.styles_table_name
-  feedback_table_name = module.database.feedback_table_name
-  sessions_table_name = module.database.sessions_table_name
+  styles_table_name      = module.database.styles_table_name
+  feedback_table_name    = module.database.feedback_table_name
+  sessions_table_name    = module.database.sessions_table_name
+  batches_table_name     = module.database.batches_table_name
+  assets_table_name      = module.database.assets_table_name
+  tasks_table_name       = module.database.tasks_table_name
+  connections_table_name = module.database.connections_table_name
 
   # SQS queue configuration
   sqs_queue_url = module.queues.queue_url
