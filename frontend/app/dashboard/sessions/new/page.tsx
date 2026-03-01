@@ -29,7 +29,7 @@ export default function NewSessionPage() {
 
     try {
       const result = await createSession.mutateAsync(sessionName || undefined);
-      router.push(`/dashboard/sessions/${result.session.sessionId}`);
+      router.push(`/dashboard/sessions/${result.sessionId}`);
     } catch (err: any) {
       console.error('Failed to create session:', err);
       setError(err.message || 'Failed to create session. Please try again.');
