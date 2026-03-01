@@ -11,18 +11,21 @@ for dir in lambdas/*/ ; do
     echo "Building $dirname..."
 
     # 3. Use esbuild to "bundle" the code into one file
-    # This grabs ONLY the code used by that specific index.js
+    # External packages are provided by Lambda Layers
     npx esbuild "lambdas/$dirname/index.js" \
       --bundle \
       --platform=node \
       --target=node20 \
+      --external:@aws-sdk/* \
+      --external:uuid \
       --external:sharp \
+      --external:archiver \
       --outfile="dist/$dirname/index.js"
 
-    # 4. Copy the Linux version of sharp into the dist folder
-    # (Lambda needs the physical files since we marked it 'external')
-    cp -r node_modules/sharp "dist/$dirname/node_modules/"
-
-    # 5. Zip it up
+    # 4. Zip it up (no node_modules needed - provided by layers)
     cd "dist/$dirname" && zip -r "../../lambdas/$dirname.zip" . && cd ../..
 done
+
+echo ""
+echo "Lambda functions built successfully!"
+echo "Note: Dependencies are provided by Lambda Layers"

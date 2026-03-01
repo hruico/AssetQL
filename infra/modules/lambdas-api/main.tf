@@ -5,13 +5,15 @@
 # It lives here because it needs Agent IDs at runtime, creating a dependency on
 # the agents module that core Lambdas must not have.
 resource "aws_lambda_function" "feedback_handler" {
-  filename      = "../../lambdas/feedback-handler.zip"
+  filename      = "${path.root}/../lambdas/feedback-handler.zip"
   function_name = "AssetQL-FeedbackHandler-${var.environment}"
   role          = var.lambda_execution_role_arn  # Reuse shared role from lambdas-core
   handler       = "index.handler"
   runtime       = "nodejs20.x"
   memory_size   = 512
   timeout       = 120
+
+  layers = [var.common_dependencies_layer_arn]
 
   environment {
     variables = {
@@ -33,7 +35,7 @@ resource "aws_lambda_function" "feedback_handler" {
 # The core lambdas policy intentionally does NOT include this permission.
 resource "aws_iam_role_policy" "agent_invocation_policy" {
   name = "AssetQL-AgentInvocationPolicy-${var.environment}"
-  role = var.lambda_execution_role_arn
+  role = var.lambda_execution_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"

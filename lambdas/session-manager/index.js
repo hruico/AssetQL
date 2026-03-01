@@ -1,5 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
-const { dynamo, GetCommand, PutCommand, UpdateCommand, response } = require('../../shared');
+const { dynamo, GetCommand, PutCommand, UpdateCommand, QueryCommand, response } = require('../../shared');
 
 // Define legal phase transitions
 // Each phase can only transition to one specific next phase
@@ -27,6 +27,9 @@ exports.handler = async (event) => {
         return await updateSessionPhase(event);
     } else if (httpMethod === 'GET' && pathParameters.sessionId) {
         return await getSession(event);
+    } else if (httpMethod === 'GET' && !pathParameters.sessionId) {
+        // List all sessions for the user
+        return await listSessions(event);
     } else {
         return response(400, { error: 'Invalid request method or path' });
     }
@@ -168,5 +171,36 @@ async function getSession(event) {
     } catch (error) {
         console.error('Error fetching session:', error);
         return response(500, { error: 'Failed to fetch session', details: error.message });
+    }
+}
+
+/**
+ * GET /api/v1/sessions
+ * Lists all sessions for the authenticated user
+ * Returns sessions sorted by creation date (newest first)
+ */
+async function listSessions(event) {
+    try {
+        const userId = event.requestContext.authorizer.claims.sub;
+
+        // Query sessions by userId using GSI (Global Secondary Index)
+        // Note: This requires a GSI on userId in the DynamoDB table
+        const result = await dynamo.send(new QueryCommand({
+            TableName: process.env.SESSIONS_TABLE_NAME,
+            IndexName: 'userId-index',
+            KeyConditionExpression: 'userId = :userId',
+            ExpressionAttributeValues: {
+                ':userId': userId
+            },
+            ScanIndexForward: false // Sort by createdAt descending (newest first)
+        }));
+
+        return response(200, {
+            sessions: result.Items || []
+        });
+
+    } catch (error) {
+        console.error('Error listing sessions:', error);
+        return response(500, { error: 'Failed to list sessions', details: error.message });
     }
 }

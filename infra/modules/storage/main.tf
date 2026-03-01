@@ -30,3 +30,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
     }
   }
 }
+
+# NOTE: S3 event notifications for asset-tagger moved to lambdas_core module
+# to avoid circular dependency (storage → lambdas_core → storage)

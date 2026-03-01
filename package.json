@@ -1,10 +1,12 @@
 {
-  "name": "AssetQL",
+  "name": "assetql",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "pnpm --filter frontend dev",
+    "build": "pnpm --filter frontend build",
+    "install:all": "pnpm install --recursive"
   },
   "keywords": [],
   "author": "",
