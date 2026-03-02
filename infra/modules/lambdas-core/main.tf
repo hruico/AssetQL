@@ -7,6 +7,28 @@
 # Split rationale: Breaking circular dependency where agents need Lambda ARNs and 
 # feedback_handler Lambda needs Agent IDs. Core Lambdas → Agents → API Lambdas.
 
+resource "aws_lambda_function" "presign_upload" {
+  filename         = "${path.root}/../lambdas/presign-upload.zip"
+  function_name    = "AssetQL-PresignUpload-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 256
+  timeout         = 10
+
+  layers = [var.common_dependencies_layer_arn]
+
+  environment {
+    variables = {
+      S3_BUCKET = var.assets_bucket_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
 resource "aws_lambda_function" "style_embedding" {
   filename         = "${path.root}/../lambdas/style-embedding.zip"
   function_name    = "AssetQL-StyleEmbedding-${var.environment}"
@@ -21,10 +43,7 @@ resource "aws_lambda_function" "style_embedding" {
   environment {
     variables = {
       S3_BUCKET = var.assets_bucket_name
-      DYNAMODB_STYLES_TABLE = var.styles_table_name
-      FEEDBACK_TABLE_NAME = var.feedback_table_name
-      SESSIONS_TABLE_NAME = var.sessions_table_name
-      SQS_QUEUE_URL = var.sqs_queue_url
+      STYLES_TABLE_NAME = var.styles_table_name
     }
   }
 

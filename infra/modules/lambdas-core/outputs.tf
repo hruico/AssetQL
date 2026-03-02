@@ -1,5 +1,10 @@
 # Lambda function ARN outputs for use in other modules
 
+output "presign_upload_arn" {
+  description = "ARN of the presign-upload Lambda function"
+  value       = aws_lambda_function.presign_upload.arn
+}
+
 output "style_embedding_arn" {
   description = "ARN of the style embedding Lambda function"
   value       = aws_lambda_function.style_embedding.arn

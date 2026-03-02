@@ -133,6 +133,7 @@ module "api_gateway" {
   cognito_user_pool_arn = module.auth.user_pool_arn
 
   # Core Lambda ARNs from lambdas-core module
+  presign_upload_arn   = module.lambdas_core.presign_upload_arn
   session_manager_arn  = module.lambdas_core.session_manager_arn
   style_embedding_arn  = module.lambdas_core.style_embedding_arn
   batch_creator_arn    = module.lambdas_core.batch_creator_arn

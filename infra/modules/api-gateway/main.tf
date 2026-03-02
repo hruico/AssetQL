@@ -76,6 +76,13 @@ resource "aws_api_gateway_resource" "styles" {
   path_part   = "styles"
 }
 
+# /presign resource
+resource "aws_api_gateway_resource" "presign" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  parent_id   = aws_api_gateway_resource.api_v1.id
+  path_part   = "presign"
+}
+
 # /batches resource
 resource "aws_api_gateway_resource" "batches" {
   rest_api_id = aws_api_gateway_rest_api.assetql_api.id
@@ -210,6 +217,24 @@ resource "aws_api_gateway_integration" "styles_list" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.style_embedding_arn}/invocations"
+}
+
+# POST /presign
+resource "aws_api_gateway_method" "presign_post" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.presign.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "presign_post" {
+  rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
+  resource_id             = aws_api_gateway_resource.presign.id
+  http_method             = aws_api_gateway_method.presign_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.presign_upload_arn}/invocations"
 }
 
 # POST /batches
@@ -479,6 +504,51 @@ resource "aws_api_gateway_integration_response" "styles_options" {
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
     "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
+  }
+}
+
+# CORS - OPTIONS /presign
+resource "aws_api_gateway_method" "presign_options" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.presign.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "presign_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.presign.id
+  http_method = aws_api_gateway_method.presign_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "presign_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.presign.id
+  http_method = aws_api_gateway_method.presign_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = true
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "presign_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.presign.id
+  http_method = aws_api_gateway_method.presign_options.http_method
+  status_code = aws_api_gateway_method_response.presign_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
   }
 }
 
@@ -814,6 +884,14 @@ resource "aws_lambda_permission" "style_embedding" {
   source_arn    = "${aws_api_gateway_rest_api.assetql_api.execution_arn}/*/*"
 }
 
+resource "aws_lambda_permission" "presign_upload" {
+  statement_id  = "AllowAPIGatewayInvokePresignUpload"
+  action        = "lambda:InvokeFunction"
+  function_name = var.presign_upload_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.assetql_api.execution_arn}/*/*"
+}
+
 resource "aws_lambda_permission" "batch_creator" {
   statement_id  = "AllowAPIGatewayInvokeBatchCreator"
   action        = "lambda:InvokeFunction"
@@ -862,6 +940,7 @@ resource "aws_api_gateway_deployment" "dev" {
       aws_api_gateway_resource.sessions_automate.id,
       aws_api_gateway_resource.sessions_export.id,
       aws_api_gateway_resource.styles.id,
+      aws_api_gateway_resource.presign.id,
       aws_api_gateway_resource.batches.id,
       aws_api_gateway_resource.feedback.id,
       aws_api_gateway_resource.assets.id,
@@ -874,6 +953,7 @@ resource "aws_api_gateway_deployment" "dev" {
       aws_api_gateway_method.sessions_export_post.id,
       aws_api_gateway_method.styles_post.id,
       aws_api_gateway_method.styles_list.id,
+      aws_api_gateway_method.presign_post.id,
       aws_api_gateway_method.batches_post.id,
       aws_api_gateway_method.feedback_post.id,
       # aws_api_gateway_method.assets_get.id, # TODO: Uncomment in Phase 3
@@ -890,6 +970,7 @@ resource "aws_api_gateway_deployment" "dev" {
     aws_api_gateway_integration.sessions_export_post,
     aws_api_gateway_integration.styles_post,
     aws_api_gateway_integration.styles_list,
+    aws_api_gateway_integration.presign_post,
     aws_api_gateway_integration.batches_post,
     aws_api_gateway_integration.feedback_post,
   ]
