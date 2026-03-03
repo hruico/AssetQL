@@ -27,8 +27,9 @@ export function useCreateStyle() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (file: File) => stylesApi.create(file),
-    onSuccess: () => {
+    mutationFn: ({ file, name }: { file: File; name: string }) =>
+      stylesApi.create(file, name),
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['styles'] });
     },
   });

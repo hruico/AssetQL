@@ -1,6 +1,21 @@
 # Data source for current AWS region
 data "aws_region" "current" {}
 
+# Reusable CORS configuration
+locals {
+  cors_headers = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  cors_header_values = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
 # REST API Gateway
 resource "aws_api_gateway_rest_api" "assetql_api" {
   name        = "AssetQL-API-${var.environment}"
@@ -18,6 +33,44 @@ resource "aws_api_gateway_authorizer" "cognito" {
   type            = "COGNITO_USER_POOLS"
   provider_arns   = [var.cognito_user_pool_arn]
   identity_source = "method.request.header.Authorization"
+}
+
+# Global CORS Gateway Responses
+# These ensure ALL API Gateway error responses include CORS headers
+# Without these, 403/401/500 errors from the gateway have no CORS headers
+# and browsers show network errors instead of the real error
+
+resource "aws_api_gateway_gateway_response" "cors_4xx" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  response_type = "DEFAULT_4XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "cors_5xx" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  response_type = "DEFAULT_5XX"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+  }
+}
+
+resource "aws_api_gateway_gateway_response" "cors_unauthorized" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  response_type = "UNAUTHORIZED"
+
+  response_parameters = {
+    "gatewayresponse.header.Access-Control-Allow-Origin"  = "'*'"
+    "gatewayresponse.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "gatewayresponse.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+  }
 }
 
 # /api resource - first level of path hierarchy
@@ -76,6 +129,13 @@ resource "aws_api_gateway_resource" "styles" {
   path_part   = "styles"
 }
 
+# /styles/{styleProfileId} resource
+resource "aws_api_gateway_resource" "style_profile" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  parent_id   = aws_api_gateway_resource.styles.id
+  path_part   = "{styleProfileId}"
+}
+
 # /presign resource
 resource "aws_api_gateway_resource" "presign" {
   rest_api_id = aws_api_gateway_rest_api.assetql_api.id
@@ -88,6 +148,13 @@ resource "aws_api_gateway_resource" "batches" {
   rest_api_id = aws_api_gateway_rest_api.assetql_api.id
   parent_id   = aws_api_gateway_resource.api_v1.id
   path_part   = "batches"
+}
+
+# /batches/{batchId} resource
+resource "aws_api_gateway_resource" "batch_id" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  parent_id   = aws_api_gateway_resource.batches.id
+  path_part   = "{batchId}"
 }
 
 # /feedback resource
@@ -219,6 +286,24 @@ resource "aws_api_gateway_integration" "styles_list" {
   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.style_embedding_arn}/invocations"
 }
 
+# GET /styles/{styleProfileId}
+resource "aws_api_gateway_method" "style_profile_get" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.style_profile.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "style_profile_get" {
+  rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
+  resource_id             = aws_api_gateway_resource.style_profile.id
+  http_method             = aws_api_gateway_method.style_profile_get.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.style_embedding_arn}/invocations"
+}
+
 # POST /presign
 resource "aws_api_gateway_method" "presign_post" {
   rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
@@ -250,6 +335,24 @@ resource "aws_api_gateway_integration" "batches_post" {
   rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
   resource_id             = aws_api_gateway_resource.batches.id
   http_method             = aws_api_gateway_method.batches_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.batch_creator_arn}/invocations"
+}
+
+# GET /batches/{batchId}
+resource "aws_api_gateway_method" "batch_id_get" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.batch_id.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "batch_id_get" {
+  rest_api_id             = aws_api_gateway_rest_api.assetql_api.id
+  resource_id             = aws_api_gateway_resource.batch_id.id
+  http_method             = aws_api_gateway_method.batch_id_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${var.batch_creator_arn}/invocations"
@@ -341,6 +444,8 @@ resource "aws_api_gateway_integration" "sessions_options" {
   http_method = aws_api_gateway_method.sessions_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.sessions_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -352,11 +457,7 @@ resource "aws_api_gateway_method_response" "sessions_options" {
   http_method = aws_api_gateway_method.sessions_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "sessions_options" {
@@ -365,11 +466,12 @@ resource "aws_api_gateway_integration_response" "sessions_options" {
   http_method = aws_api_gateway_method.sessions_options.http_method
   status_code = aws_api_gateway_method_response.sessions_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.sessions_options,
+    aws_api_gateway_method_response.sessions_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /sessions/{sessionId}
@@ -386,6 +488,8 @@ resource "aws_api_gateway_integration" "sessions_id_options" {
   http_method = aws_api_gateway_method.sessions_id_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.sessions_id_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -397,11 +501,7 @@ resource "aws_api_gateway_method_response" "sessions_id_options" {
   http_method = aws_api_gateway_method.sessions_id_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "sessions_id_options" {
@@ -410,11 +510,12 @@ resource "aws_api_gateway_integration_response" "sessions_id_options" {
   http_method = aws_api_gateway_method.sessions_id_options.http_method
   status_code = aws_api_gateway_method_response.sessions_id_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.sessions_id_options,
+    aws_api_gateway_method_response.sessions_id_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /sessions/{sessionId}/phase
@@ -431,6 +532,8 @@ resource "aws_api_gateway_integration" "sessions_phase_options" {
   http_method = aws_api_gateway_method.sessions_phase_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.sessions_phase_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -442,11 +545,7 @@ resource "aws_api_gateway_method_response" "sessions_phase_options" {
   http_method = aws_api_gateway_method.sessions_phase_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "sessions_phase_options" {
@@ -455,11 +554,12 @@ resource "aws_api_gateway_integration_response" "sessions_phase_options" {
   http_method = aws_api_gateway_method.sessions_phase_options.http_method
   status_code = aws_api_gateway_method_response.sessions_phase_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.sessions_phase_options,
+    aws_api_gateway_method_response.sessions_phase_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /styles
@@ -476,6 +576,8 @@ resource "aws_api_gateway_integration" "styles_options" {
   http_method = aws_api_gateway_method.styles_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.styles_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -487,11 +589,7 @@ resource "aws_api_gateway_method_response" "styles_options" {
   http_method = aws_api_gateway_method.styles_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "styles_options" {
@@ -500,11 +598,56 @@ resource "aws_api_gateway_integration_response" "styles_options" {
   http_method = aws_api_gateway_method.styles_options.http_method
   status_code = aws_api_gateway_method_response.styles_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
+  depends_on = [
+    aws_api_gateway_integration.styles_options,
+    aws_api_gateway_method_response.styles_options
+  ]
+
+  response_parameters = local.cors_header_values
+}
+
+# CORS - OPTIONS /styles/{styleProfileId}
+resource "aws_api_gateway_method" "style_profile_options" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.style_profile.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "style_profile_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.style_profile.id
+  http_method = aws_api_gateway_method.style_profile_options.http_method
+  type        = "MOCK"
+
+  depends_on = [aws_api_gateway_method.style_profile_options]
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
   }
+}
+
+resource "aws_api_gateway_method_response" "style_profile_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.style_profile.id
+  http_method = aws_api_gateway_method.style_profile_options.http_method
+  status_code = "200"
+
+  response_parameters = local.cors_headers
+}
+
+resource "aws_api_gateway_integration_response" "style_profile_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.style_profile.id
+  http_method = aws_api_gateway_method.style_profile_options.http_method
+  status_code = "200"
+
+  depends_on = [
+    aws_api_gateway_integration.style_profile_options,
+    aws_api_gateway_method_response.style_profile_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /presign
@@ -521,6 +664,8 @@ resource "aws_api_gateway_integration" "presign_options" {
   http_method = aws_api_gateway_method.presign_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.presign_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -532,11 +677,7 @@ resource "aws_api_gateway_method_response" "presign_options" {
   http_method = aws_api_gateway_method.presign_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "presign_options" {
@@ -545,11 +686,12 @@ resource "aws_api_gateway_integration_response" "presign_options" {
   http_method = aws_api_gateway_method.presign_options.http_method
   status_code = aws_api_gateway_method_response.presign_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.presign_options,
+    aws_api_gateway_method_response.presign_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /batches
@@ -566,6 +708,8 @@ resource "aws_api_gateway_integration" "batches_options" {
   http_method = aws_api_gateway_method.batches_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.batches_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -577,11 +721,7 @@ resource "aws_api_gateway_method_response" "batches_options" {
   http_method = aws_api_gateway_method.batches_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "batches_options" {
@@ -590,11 +730,12 @@ resource "aws_api_gateway_integration_response" "batches_options" {
   http_method = aws_api_gateway_method.batches_options.http_method
   status_code = aws_api_gateway_method_response.batches_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.batches_options,
+    aws_api_gateway_method_response.batches_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /feedback
@@ -611,6 +752,8 @@ resource "aws_api_gateway_integration" "feedback_options" {
   http_method = aws_api_gateway_method.feedback_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.feedback_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -622,11 +765,7 @@ resource "aws_api_gateway_method_response" "feedback_options" {
   http_method = aws_api_gateway_method.feedback_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "feedback_options" {
@@ -635,11 +774,56 @@ resource "aws_api_gateway_integration_response" "feedback_options" {
   http_method = aws_api_gateway_method.feedback_options.http_method
   status_code = aws_api_gateway_method_response.feedback_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
+  depends_on = [
+    aws_api_gateway_integration.feedback_options,
+    aws_api_gateway_method_response.feedback_options
+  ]
+
+  response_parameters = local.cors_header_values
+}
+
+# CORS - OPTIONS /batches/{batchId}
+resource "aws_api_gateway_method" "batch_id_options" {
+  rest_api_id   = aws_api_gateway_rest_api.assetql_api.id
+  resource_id   = aws_api_gateway_resource.batch_id.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "batch_id_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.batch_id.id
+  http_method = aws_api_gateway_method.batch_id_options.http_method
+  type        = "MOCK"
+
+  depends_on = [aws_api_gateway_method.batch_id_options]
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
   }
+}
+
+resource "aws_api_gateway_method_response" "batch_id_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.batch_id.id
+  http_method = aws_api_gateway_method.batch_id_options.http_method
+  status_code = "200"
+
+  response_parameters = local.cors_headers
+}
+
+resource "aws_api_gateway_integration_response" "batch_id_options" {
+  rest_api_id = aws_api_gateway_rest_api.assetql_api.id
+  resource_id = aws_api_gateway_resource.batch_id.id
+  http_method = aws_api_gateway_method.batch_id_options.http_method
+  status_code = "200"
+
+  depends_on = [
+    aws_api_gateway_integration.batch_id_options,
+    aws_api_gateway_method_response.batch_id_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /assets/{assetId} - TODO: Implement in Phase 3
@@ -701,6 +885,8 @@ resource "aws_api_gateway_integration" "sessions_automate_options" {
   http_method = aws_api_gateway_method.sessions_automate_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.sessions_automate_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -712,11 +898,7 @@ resource "aws_api_gateway_method_response" "sessions_automate_options" {
   http_method = aws_api_gateway_method.sessions_automate_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "sessions_automate_options" {
@@ -725,11 +907,12 @@ resource "aws_api_gateway_integration_response" "sessions_automate_options" {
   http_method = aws_api_gateway_method.sessions_automate_options.http_method
   status_code = aws_api_gateway_method_response.sessions_automate_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.sessions_automate_options,
+    aws_api_gateway_method_response.sessions_automate_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /sessions/{sessionId}/export
@@ -746,6 +929,8 @@ resource "aws_api_gateway_integration" "sessions_export_options" {
   http_method = aws_api_gateway_method.sessions_export_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.sessions_export_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -757,11 +942,7 @@ resource "aws_api_gateway_method_response" "sessions_export_options" {
   http_method = aws_api_gateway_method.sessions_export_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "sessions_export_options" {
@@ -770,11 +951,12 @@ resource "aws_api_gateway_integration_response" "sessions_export_options" {
   http_method = aws_api_gateway_method.sessions_export_options.http_method
   status_code = aws_api_gateway_method_response.sessions_export_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.sessions_export_options,
+    aws_api_gateway_method_response.sessions_export_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /api
@@ -791,6 +973,8 @@ resource "aws_api_gateway_integration" "api_root_options" {
   http_method = aws_api_gateway_method.api_root_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.api_root_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -802,11 +986,7 @@ resource "aws_api_gateway_method_response" "api_root_options" {
   http_method = aws_api_gateway_method.api_root_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "api_root_options" {
@@ -815,11 +995,12 @@ resource "aws_api_gateway_integration_response" "api_root_options" {
   http_method = aws_api_gateway_method.api_root_options.http_method
   status_code = aws_api_gateway_method_response.api_root_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.api_root_options,
+    aws_api_gateway_method_response.api_root_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # CORS - OPTIONS /api/v1
@@ -836,6 +1017,8 @@ resource "aws_api_gateway_integration" "api_v1_options" {
   http_method = aws_api_gateway_method.api_v1_options.http_method
   type        = "MOCK"
 
+  depends_on = [aws_api_gateway_method.api_v1_options]
+
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
@@ -847,11 +1030,7 @@ resource "aws_api_gateway_method_response" "api_v1_options" {
   http_method = aws_api_gateway_method.api_v1_options.http_method
   status_code = "200"
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = true
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-  }
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_integration_response" "api_v1_options" {
@@ -860,11 +1039,12 @@ resource "aws_api_gateway_integration_response" "api_v1_options" {
   http_method = aws_api_gateway_method.api_v1_options.http_method
   status_code = aws_api_gateway_method_response.api_v1_options.status_code
 
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,OPTIONS'"
-  }
+  depends_on = [
+    aws_api_gateway_integration.api_v1_options,
+    aws_api_gateway_method_response.api_v1_options
+  ]
+
+  response_parameters = local.cors_header_values
 }
 
 # Lambda permissions for API Gateway to invoke functions
@@ -934,14 +1114,19 @@ resource "aws_api_gateway_deployment" "dev" {
       aws_api_gateway_resource.api_root.id,
       aws_api_gateway_resource.api_v1.id,
       aws_api_gateway_rest_api.assetql_api.body,
+      aws_api_gateway_gateway_response.cors_4xx.id,
+      aws_api_gateway_gateway_response.cors_5xx.id,
+      aws_api_gateway_gateway_response.cors_unauthorized.id,
       aws_api_gateway_resource.sessions.id,
       aws_api_gateway_resource.sessions_id.id,
       aws_api_gateway_resource.sessions_phase.id,
       aws_api_gateway_resource.sessions_automate.id,
       aws_api_gateway_resource.sessions_export.id,
       aws_api_gateway_resource.styles.id,
+      aws_api_gateway_resource.style_profile.id,
       aws_api_gateway_resource.presign.id,
       aws_api_gateway_resource.batches.id,
+      aws_api_gateway_resource.batch_id.id,
       aws_api_gateway_resource.feedback.id,
       aws_api_gateway_resource.assets.id,
       aws_api_gateway_resource.assets_id.id,
@@ -953,8 +1138,12 @@ resource "aws_api_gateway_deployment" "dev" {
       aws_api_gateway_method.sessions_export_post.id,
       aws_api_gateway_method.styles_post.id,
       aws_api_gateway_method.styles_list.id,
+      aws_api_gateway_method.style_profile_get.id,
+      aws_api_gateway_method.style_profile_options.id,
       aws_api_gateway_method.presign_post.id,
       aws_api_gateway_method.batches_post.id,
+      aws_api_gateway_method.batch_id_get.id,
+      aws_api_gateway_method.batch_id_options.id,
       aws_api_gateway_method.feedback_post.id,
       # aws_api_gateway_method.assets_get.id, # TODO: Uncomment in Phase 3
     ]))
@@ -970,8 +1159,12 @@ resource "aws_api_gateway_deployment" "dev" {
     aws_api_gateway_integration.sessions_export_post,
     aws_api_gateway_integration.styles_post,
     aws_api_gateway_integration.styles_list,
+    aws_api_gateway_integration.style_profile_get,
+    aws_api_gateway_integration.style_profile_options,
     aws_api_gateway_integration.presign_post,
     aws_api_gateway_integration.batches_post,
+    aws_api_gateway_integration.batch_id_get,
+    aws_api_gateway_integration.batch_id_options,
     aws_api_gateway_integration.feedback_post,
   ]
 

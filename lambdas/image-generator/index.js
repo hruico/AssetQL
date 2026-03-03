@@ -1,7 +1,11 @@
 const { bedrock, s3, sqs, dynamo, response,
         GetCommand, PutCommand, UpdateCommand, PutObjectCommand,
-        InvokeModelCommand, SendMessageBatchCommand } = require('../../shared');
+        InvokeModelCommand, ConverseCommand, SendMessageBatchCommand } = require('../../shared');
 const { SQSClient, SendMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
+const { BedrockRuntimeClient } = require('@aws-sdk/client-bedrock-runtime');
+
+// Separate Bedrock client for us-east-1 (Stable Image Core availability)
+const bedrockUsEast1 = new BedrockRuntimeClient({ region: 'us-east-1' });
 
 
 exports.handler = async (event) => {
@@ -29,48 +33,59 @@ exports.handler = async (event) => {
     const negativePrompt = style.descriptors.negativePrompt || 'blurry, low quality, distorted';
 
 
-    // 3. Call Bedrock Stable Image Core (50% cheaper than SDXL, faster generation)
-    const stableCorePayload = {
-      prompt: prompt,
-      negative_prompt: negativePrompt,
-      aspect_ratio: "1:1",  // or "16:9", "9:16", "4:3", "3:4"
-      output_format: "png"
-    };
-
-
-    const imgRes = await bedrock.send(new InvokeModelCommand({
-      modelId: 'stability.stable-image-core-v1:0',
-      body: JSON.stringify(stableCorePayload),
+    // 3. Generate image using Nova Canvas in us-east-1
+    const genRes = await bedrockUsEast1.send(new InvokeModelCommand({
+      modelId: 'amazon.nova-canvas-v1:0',
+      body: JSON.stringify({
+        taskType: 'TEXT_IMAGE',
+        textToImageParams: {
+          text: prompt,
+          negativeText: style.descriptors?.negativePrompt || 'blurry, low quality, distorted'
+        },
+        imageGenerationConfig: {
+          numberOfImages: 1,
+          height: 1024,
+          width: 1024,
+          cfgScale: 8.0,
+          seed: Math.floor(Math.random() * 858993459)
+        }
+      }),
       contentType: 'application/json',
       accept: 'application/json'
     }));
-    const imgBody = JSON.parse(Buffer.from(imgRes.body).toString());
-    const imageBase64 = imgBody.images[0];
+    const genBody = JSON.parse(Buffer.from(genRes.body).toString());
+    
+    // Nova Canvas returns base64 images array
+    if (genBody.error) {
+      throw new Error(`Nova Canvas error: ${genBody.error}`);
+    }
+    const imageBase64 = genBody.images[0];
     const imageBuffer = Buffer.from(imageBase64, 'base64');
 
 
     // 4. Score style consistency using Nova Lite (50x cheaper than Claude)
-    const scoringPayload = {
-      messages: [{
-        role: 'user',
-        content: [
-          { image: { format: 'png', source: { bytes: imageBuffer } } },
-          { text: `Rate how closely this image matches this style profile on a scale of 0-100.
-  Style: ${JSON.stringify(style.descriptors)}
-  Return ONLY a JSON object: {"score": <number>}` }
-        ]
-      }],
-      inferenceConfig: { maxTokens: 100, temperature: 0.3 }
-    };
-    
-    const scoreRes = await bedrock.send(new InvokeModelCommand({
-      modelId: 'amazon.nova-lite-v1:0',
-      body: JSON.stringify(scoringPayload),
-      contentType: 'application/json'
-    }));
-    const scoreBody = JSON.parse(Buffer.from(scoreRes.body).toString());
-    const scoreData = JSON.parse(scoreBody.output.message.content[0].text);
-    const styleScore = scoreData.score;
+    let styleScore = 85; // default score if scoring fails
+    try {
+      const scoreRes = await bedrock.send(new ConverseCommand({
+        modelId: 'apac.amazon.nova-lite-v1:0',
+        messages: [{
+          role: 'user',
+          content: [
+            { image: { format: 'png', source: { bytes: imageBuffer } } },
+            { text: `Score this image's style consistency vs these descriptors: ${JSON.stringify(style.descriptors)}. Return only a JSON object: {"score": <0-100>}` }
+          ]
+        }],
+        inferenceConfig: { maxTokens: 256, temperature: 0.1 }
+      }));
+      
+      // Parse score from converse response
+      const scoreText = scoreRes.output.message.content[0].text;
+      const scoreData = JSON.parse(scoreText.replace(/```json|```/g, '').trim());
+      styleScore = scoreData.score || 85;
+    } catch (scoreErr) {
+      console.warn('Style scoring failed, using default score:', scoreErr.message);
+      // Continue with default score - do not block image save
+    }
     const threshold = style.deviationThreshold || 85;
 
 

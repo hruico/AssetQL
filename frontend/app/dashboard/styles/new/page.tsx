@@ -8,6 +8,7 @@ import { useCreateStyle } from '@/lib/hooks/useStyles';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 
 export default function NewStylePage() {
   const router = useRouter();
@@ -16,6 +17,8 @@ export default function NewStylePage() {
   
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [styleName, setStyleName] = useState('');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'success' | 'error'>('idle');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -29,6 +32,11 @@ export default function NewStylePage() {
       const selectedFile = acceptedFiles[0];
       setFile(selectedFile);
       setError('');
+      setUploadStatus('idle');
+      
+      // Set default name from filename (without extension)
+      const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, '');
+      setStyleName(nameWithoutExt);
       
       // Create preview
       const reader = new FileReader();
@@ -56,16 +64,47 @@ export default function NewStylePage() {
       return;
     }
 
+    if (!styleName.trim()) {
+      setError('Please enter a style name');
+      return;
+    }
+
     setError('');
 
     try {
-      const result = await createStyle.mutateAsync(file);
-      router.push(`/dashboard/styles/${result.styleProfile.styleProfileId}`);
+      setUploadStatus('uploading');
+      
+      const result = await createStyle.mutateAsync({ 
+        file, 
+        name: styleName.trim() 
+      });
+      
+      console.log('Style profile created:', JSON.stringify(result, null, 2));
+      
+      setUploadStatus('success');
+      
+      // Redirect to styles list page after brief success message
+      setTimeout(() => {
+        router.push('/dashboard/styles');
+      }, 500);
+      
     } catch (err: any) {
       console.error('Failed to create style profile:', err);
+      setUploadStatus('error');
       setError(err.message || 'Failed to upload style profile. Please try again.');
     }
   };
+
+  // Update status to 'analyzing' when mutation is pending and we've passed upload
+  useEffect(() => {
+    if (createStyle.isPending && uploadStatus === 'uploading') {
+      // Small delay to show uploading status first
+      const timer = setTimeout(() => {
+        setUploadStatus('analyzing');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [createStyle.isPending, uploadStatus]);
 
   if (authLoading || !user) {
     return (
@@ -74,6 +113,24 @@ export default function NewStylePage() {
       </div>
     );
   }
+
+  const getStatusMessage = () => {
+    switch (uploadStatus) {
+      case 'uploading':
+        return { text: 'Uploading image to storage...', color: 'text-blue-600 dark:text-blue-400' };
+      case 'analyzing':
+        return { text: 'AI is analyzing your style... (5-10 sec)', color: 'text-purple-600 dark:text-purple-400' };
+      case 'success':
+        return { text: 'Style profile created! Redirecting...', color: 'text-green-600 dark:text-green-400' };
+      case 'error':
+        return { text: 'Upload failed. Please try again.', color: 'text-red-600 dark:text-red-400' };
+      default:
+        return null;
+    }
+  };
+
+  const statusMessage = getStatusMessage();
+  const isProcessing = uploadStatus === 'uploading' || uploadStatus === 'analyzing';
 
   return (
     <DashboardLayout>
@@ -100,17 +157,55 @@ export default function NewStylePage() {
               </div>
             )}
 
+            {statusMessage && (
+              <div className={`mb-4 rounded-md p-3 text-sm font-medium ${
+                uploadStatus === 'error' 
+                  ? 'bg-red-50 dark:bg-red-900/20' 
+                  : uploadStatus === 'success'
+                  ? 'bg-green-50 dark:bg-green-900/20'
+                  : 'bg-blue-50 dark:bg-blue-900/20'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {isProcessing && (
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  )}
+                  <span className={statusMessage.color}>{statusMessage.text}</span>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Style Name Input */}
+              <div>
+                <label htmlFor="styleName" className="mb-2 block text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                  Style Name
+                </label>
+                <Input
+                  id="styleName"
+                  type="text"
+                  value={styleName}
+                  onChange={(e) => setStyleName(e.target.value)}
+                  placeholder="e.g., Fantasy Illustration, Cyberpunk Art"
+                  disabled={isProcessing}
+                  required
+                />
+              </div>
+
               {/* Dropzone */}
               <div
                 {...getRootProps()}
                 className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${
-                  isDragActive
+                  isProcessing
+                    ? 'pointer-events-none opacity-50'
+                    : isDragActive
                     ? 'border-zinc-900 bg-zinc-50 dark:border-zinc-50 dark:bg-zinc-900'
                     : 'border-zinc-300 hover:border-zinc-400 dark:border-zinc-700 dark:hover:border-zinc-600'
                 }`}
               >
-                <input {...getInputProps()} />
+                <input {...getInputProps()} disabled={isProcessing} />
                 
                 {preview ? (
                   <div className="space-y-4">
@@ -122,9 +217,11 @@ export default function NewStylePage() {
                     <p className="text-sm text-zinc-600 dark:text-zinc-400">
                       {file?.name}
                     </p>
-                    <Button type="button" size="sm" variant="secondary">
-                      Change Image
-                    </Button>
+                    {!isProcessing && (
+                      <Button type="button" size="sm" variant="secondary">
+                        Change Image
+                      </Button>
+                    )}
                   </div>
                 ) : (
                   <div>
@@ -168,16 +265,19 @@ export default function NewStylePage() {
               <div className="flex gap-3">
                 <Button
                   type="submit"
-                  disabled={!file || createStyle.isPending}
+                  disabled={!file || !styleName.trim() || isProcessing}
                   className="flex-1"
                 >
-                  {createStyle.isPending ? 'Analyzing...' : 'Upload & Analyze'}
+                  {uploadStatus === 'uploading' && 'Uploading...'}
+                  {uploadStatus === 'analyzing' && 'Analyzing...'}
+                  {uploadStatus === 'success' && 'Success!'}
+                  {(uploadStatus === 'idle' || uploadStatus === 'error') && 'Upload & Analyze'}
                 </Button>
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={() => router.back()}
-                  disabled={createStyle.isPending}
+                  disabled={isProcessing}
                 >
                   Cancel
                 </Button>

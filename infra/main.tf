@@ -24,7 +24,6 @@ module "storage" {
 
   project_name = var.project_name
   environment  = var.environment
-  # Removed asset_tagger_arn to break circular dependency
 }
 
 output "assets_bucket_name" {
@@ -152,5 +151,28 @@ module "websocket_api" {
   environment        = var.environment
   websocket_handler_arn = module.lambdas_core.websocket_handler_arn
   websocket_handler_invoke_arn = module.lambdas_core.websocket_handler_invoke_arn
+}
+
+# S3 → Asset Tagger notification (defined here to avoid circular dependency)
+# storage module provides bucket, lambdas_core provides Lambda ARN
+resource "aws_lambda_permission" "allow_s3_asset_tagger" {
+  statement_id  = "AllowS3InvokeAssetTagger"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambdas_core.asset_tagger_arn
+  principal     = "s3.amazonaws.com"
+  source_arn    = "arn:aws:s3:::${module.storage.assets_bucket_name}"
+}
+
+resource "aws_s3_bucket_notification" "asset_tagger_trigger" {
+  bucket = module.storage.assets_bucket_name
+
+  lambda_function {
+    lambda_function_arn = module.lambdas_core.asset_tagger_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "raw/"
+    filter_suffix       = ".png"
+  }
+
+  depends_on = [aws_lambda_permission.allow_s3_asset_tagger]
 }
 

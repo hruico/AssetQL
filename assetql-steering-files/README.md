@@ -4,9 +4,29 @@ This folder contains the steering files for the AssetQL project. These files pro
 
 ## Files Included
 
+### Core Documentation
 - **product.md** - Product vision, target users, key differentiators, and success metrics
 - **structure.md** - Project structure, Lambda functions, infrastructure modules, and development workflows
 - **tech.md** - Technical stack, AI/ML models, code conventions, and AWS configuration
+
+### Implementation Guides
+- **BACKEND_API_IMPLEMENTATION.md** - Session & style list endpoints implementation
+- **DEPLOYMENT_GUIDE.md** - Complete deployment guide from infrastructure to production
+- **INFRASTRUCTURE_IMPROVEMENTS_SUMMARY.md** - Recent infrastructure hardening (CORS, UUID, presigned uploads, APAC profiles)
+- **PROJECT_AUDIT_REPORT.md** - Comprehensive audit with Lambda Layers architecture
+
+### Deployment Resources
+- **AWS_AMPLIFY_DEPLOYMENT.md** - AWS Amplify deployment guide
+- **AMPLIFY_DEPLOYMENT_STEPS.md** - Step-by-step Amplify deployment
+- **DEPLOYMENT_OPTIONS.md** - Comparison of deployment options
+- **PRE_DEPLOYMENT_CHECKLIST.md** - Pre-deployment validation checklist
+
+### Planning & Progress
+- **AssetQL_Implementation_Plan.md** - Implementation roadmap
+- **PHASE_2_COMPLETION_SUMMARY.md** - Phase 2 completion status
+- **DEPENDENCY_AUDIT_REPORT.md** - Dependency audit and optimization
+- **GETTING_STARTED.md** - Quick start guide
+- **QUICK_START.md** - Rapid setup instructions
 
 ## How to Use
 

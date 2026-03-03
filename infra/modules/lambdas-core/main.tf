@@ -372,22 +372,26 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
-          "dynamodb:Query"
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchGetItem",
+          "dynamodb:BatchWriteItem"
         ]
         Resource = [
-          "arn:aws:dynamodb:*:*:table/${var.feedback_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.sessions_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.styles_table_name}"
+          "arn:aws:dynamodb:ap-south-1:*:table/AssetQL-*",
+          "arn:aws:dynamodb:ap-south-1:*:table/AssetQL-*/index/*"
         ]
       },
       {
         Effect = "Allow"
         Action = [
-          "bedrock:InvokeModel"
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
         ]
         Resource = [
-          "arn:aws:bedrock:*::foundation-model/amazon.nova-micro-v1:0",
-          "arn:aws:bedrock:*::foundation-model/amazon.nova-lite-v1:0"
+          "arn:aws:bedrock:*::foundation-model/*",
+          "arn:aws:bedrock:*:*:inference-profile/*"
         ]
       },
       {
@@ -420,23 +424,6 @@ resource "aws_iam_role_policy" "shared_lambda_policy" {
         ]
         Resource = [
           "arn:aws:s3:::${var.assets_bucket_name}/*"
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:Query"
-        ]
-        Resource = [
-          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.tasks_table_name}/index/*",
-          "arn:aws:dynamodb:*:*:table/${var.batches_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.batches_table_name}/index/*",
-          "arn:aws:dynamodb:*:*:table/${var.assets_table_name}",
-          "arn:aws:dynamodb:*:*:table/${var.assets_table_name}/index/*"
         ]
       },
       {

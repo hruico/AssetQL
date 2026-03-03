@@ -1,19 +1,13 @@
-$functionName = "AssetQL-SessionManager-dev"
+$functionName = "AssetQL-ImageGenerator-dev"
 $region = "ap-south-1"
 
-$srcFile = "lambdas/session-manager/index.js"
-$outDir  = "dist/session-manager"
-$zipFile = "dist/session-manager.zip"
-
-# Ensure esbuild exists
-if (-not (Get-Command esbuild -ErrorAction SilentlyContinue)) {
-    Write-Host "esbuild not found. Install with: npm install -g esbuild"
-    return
-}
+$srcFile = "lambdas/image-generator/index.js"
+$outDir  = "dist/image-generator"
+$zipFile = "dist/image-generator.zip"
 
 # Ensure source exists
 if (-not (Test-Path $srcFile)) {
-    Write-Host "Source file not found: $srcFile"
+    Write-Host "Source not found: $srcFile"
     return
 }
 
@@ -23,7 +17,7 @@ if (Test-Path $outDir) {
 }
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
-Write-Host "Bundling..."
+Write-Host "Bundling image-generator..."
 
 esbuild $srcFile `
   --bundle `
@@ -31,7 +25,6 @@ esbuild $srcFile `
   --target=node20 `
   --external:@aws-sdk/* `
   --external:sharp `
-  --external:archiver `
   --outfile="$outDir/index.js"
 
 if ($LASTEXITCODE -ne 0) {
@@ -39,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
     return
 }
 
-# Re-zip
+# Recreate ZIP
 if (Test-Path $zipFile) {
     Remove-Item $zipFile -Force
 }
@@ -53,7 +46,7 @@ if ($LASTEXITCODE -ne 0) {
     return
 }
 
-Write-Host "Deploying Lambda..."
+Write-Host "Deploying $functionName..."
 
 aws lambda update-function-code `
   --function-name $functionName `
@@ -75,4 +68,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "Redeployed successfully. Test now."
+Write-Host "ImageGenerator deployed successfully."

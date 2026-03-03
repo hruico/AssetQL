@@ -25,14 +25,17 @@ Serverless-first AWS architecture with queue-driven processing, event-driven wor
 
 ### AI/ML Stack
 - **Amazon Nova Micro** (text-only, ultra-low-cost)
+  - Model ID: `apac.amazon.nova-micro-v1:0` (APAC inference profile)
   - Prompt refinement
   - PromptEngineerAgent foundation model
 - **Amazon Nova Lite** (vision + text, 50x cheaper than Claude)
+  - Model ID: `apac.amazon.nova-lite-v1:0` (APAC inference profile)
   - Style analysis
   - Auto-tagging
   - Style consistency scoring
   - QualityGatekeeperAgent foundation model
 - **Stable Image Core** (50% cheaper than SDXL, faster generation)
+  - Model ID: `stability.stable-image-core-v1:0`
   - Image generation
   - 1:1 aspect ratio support
 - **Amazon Bedrock Agents**
@@ -61,10 +64,17 @@ Serverless-first AWS architecture with queue-driven processing, event-driven wor
 ### 1. style-embedding
 - **Trigger**: API Gateway (POST /api/v1/styles)
 - **Purpose**: Analyze style references and create style profiles
-- **AI Model**: Amazon Nova Lite (`amazon.nova-lite-v1:0`)
-- **Process**: Save reference to S3, analyze style, store profile in DynamoDB
+- **AI Model**: Amazon Nova Lite (`apac.amazon.nova-lite-v1:0`)
+- **API**: Bedrock ConverseCommand (required for APAC inference profiles)
+- **Process**: Fetch from S3 (presigned upload), analyze style, store profile in DynamoDB
 
-### 2. batch-creator
+### 2. presign-upload
+- **Trigger**: API Gateway (POST /api/v1/presign)
+- **Purpose**: Generate presigned S3 URLs for direct client uploads
+- **Process**: Create presigned PUT URL (5 min expiry), return to client for direct S3 upload
+- **Benefits**: Bypasses API Gateway 10MB limit, supports files up to 5GB
+
+### 3. batch-creator
 - **Trigger**: API Gateway (POST /api/v1/batches)
 - **Purpose**: Create batch jobs from CSV input
 - **Process**: Apply prompt template, append style modifiers, create batch/task records, push to SQS
@@ -130,11 +140,11 @@ const { dynamo, s3, sqs, bedrock, response,
 ### Bedrock Configuration
 - **Region**: ap-south-1 (configured in shared/index.js)
 - **Models Used**:
-  - `amazon.nova-micro-v1:0` (text-only)
-  - `amazon.nova-lite-v1:0` (vision + text)
+  - `apac.amazon.nova-micro-v1:0` (text-only, APAC inference profile)
+  - `apac.amazon.nova-lite-v1:0` (vision + text, APAC inference profile)
   - `stability.stable-image-core-v1:0` (image generation)
 
-### Nova Lite Request Format
+### Nova Lite Request Format (ConverseCommand)
 ```javascript
 {
   messages: [{

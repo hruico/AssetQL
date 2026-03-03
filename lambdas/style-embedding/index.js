@@ -1,4 +1,7 @@
-const { bedrock, s3, dynamo, response, PutObjectCommand, PutCommand, QueryCommand, GetCommand, GetObjectCommand, InvokeModelCommand } = require('../../shared/index.js');
+const { s3, dynamo, response, PutCommand, QueryCommand, GetCommand, GetObjectCommand } = require('../../shared/index.js');
+const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
+
+const bedrockClient = new BedrockRuntimeClient({ region: 'ap-south-1' });
 
 
 exports.handler = async (event) => {
@@ -52,17 +55,34 @@ async function createStyleProfile(event) {
     console.log('STYLES_TABLE_NAME defined?', !!process.env.STYLES_TABLE_NAME);
 
     const userId = event.requestContext.authorizer.claims.sub;
-    const body = JSON.parse(event.body || '{}');
     
+    // Safe body parsing
+    let body;
+    try {
+      body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+    } catch (parseError) {
+      console.error('Body parse error. Raw body:', event.body?.substring(0, 200));
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ 
+          error: 'Invalid request body. Expected JSON with s3Key and name fields.',
+          hint: 'Body must be: { "s3Key": "style-references/uuid/file.png", "name": "My Style" }'
+        })
+      };
+    }
+
     const { s3Key, name, styleProfileId: providedStyleProfileId } = body;
 
-    // Validate required fields
     if (!s3Key) {
-      return response(400, { 
-        error: 's3Key is required', 
-        message: 'Image must be uploaded to S3 first using /api/v1/presign endpoint' 
-      });
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: 'Missing required field: s3Key' })
+      };
     }
+
+    console.log('Parsed body - s3Key:', s3Key, 'name:', name);
 
     // Use provided styleProfileId or generate new one
     const styleProfileId = providedStyleProfileId || crypto.randomUUID();
@@ -78,42 +98,53 @@ async function createStyleProfile(event) {
     // Convert S3 stream to buffer
     const imageBuffer = await streamToBuffer(s3Response.Body);
     
-    // Extract image type from S3 key or Content-Type
-    const imageType = s3Key.split('.').pop().toLowerCase();
+    // Determine image format from S3 key file extension
+    const ext = s3Key.split('.').pop().toLowerCase();
+    const imageFormat = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 
+                       (ext === 'gif') ? 'gif' :
+                       (ext === 'webp') ? 'webp' : 'png';
 
-    console.log('Image fetched successfully, size:', imageBuffer.length, 'bytes');
+    console.log('Image fetched successfully, size:', imageBuffer.length, 'bytes', 'format:', imageFormat);
 
-    // 2. Call Bedrock Nova Lite to analyze the style (50x cheaper than Claude)
-    const bedrockPayload = {
+    // 2. Call Bedrock Nova Lite to analyze the style using ConverseCommand
+    const converseResponse = await bedrockClient.send(new ConverseCommand({
+      modelId: 'apac.amazon.nova-lite-v1:0',
       messages: [{
         role: 'user',
         content: [
-          { image: { format: imageType === 'jpg' ? 'jpeg' : imageType, source: { bytes: imageBuffer } } },
-          { text: `Analyze the visual style of this image and return ONLY a JSON object (no explanation) with these exact fields:
+          {
+            image: {
+              format: imageFormat,
+              source: {
+                bytes: imageBuffer
+              }
+            }
+          },
+          {
+            text: `Analyze this reference image and extract its visual style. Return ONLY valid JSON with this exact structure, no markdown:
 {
   "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"],
-  "composition": "description of layout and composition",
-  "texture": "description of textures and surface quality",
-  "lighting": "description of lighting style and mood",
-  "artStyle": "e.g. fantasy illustration, photorealistic, flat cartoon",
-  "mood": "1-3 words describing the emotional atmosphere",
-  "negativePrompt": "elements to avoid for style consistency"
-}` }
+  "composition": "description of layout and framing",
+  "texture": "description of surface textures",
+  "lighting": "description of lighting style",
+  "artStyle": "description of art style",
+  "mood": "description of emotional tone",
+  "negativePrompt": "elements to avoid in generation"
+}`
+          }
         ]
       }],
-      inferenceConfig: { maxTokens: 1024, temperature: 0.3 }
-    };
-
-    const bedrockRes = await bedrock.send(new InvokeModelCommand({
-      modelId: 'amazon.nova-lite-v1:0',
-      body: JSON.stringify(bedrockPayload),
-      contentType: 'application/json'
+      inferenceConfig: {
+        maxTokens: 1024,
+        temperature: 0.3
+      }
     }));
-    const responseBody = JSON.parse(Buffer.from(bedrockRes.body).toString());
-    const rawText = responseBody.output.message.content[0].text;
 
-    const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
-    const styleDescriptors = JSON.parse(cleanText);
+    // Parse the response
+    const responseText = converseResponse.output.message.content[0].text;
+    // Strip markdown code fences if present
+    const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const styleDescriptors = JSON.parse(cleanJson);
 
     // 3. Save style profile to DynamoDB
     await dynamo.send(new PutCommand({
