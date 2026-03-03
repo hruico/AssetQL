@@ -1,10 +1,16 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { sessionsApi } from '@/lib/api/sessions';
 import type { Session, SessionPhase } from '@/lib/types/api';
 
 interface SessionCardProps {
   session: Session;
+  onDelete?: () => void;
 }
 
 const phaseConfig: Record<SessionPhase, { label: string; variant: 'default' | 'info' | 'warning' | 'success' }> = {
@@ -16,9 +22,30 @@ const phaseConfig: Record<SessionPhase, { label: string; variant: 'default' | 'i
   COMPLETE: { label: 'Complete', variant: 'success' },
 };
 
-export function SessionCard({ session }: SessionCardProps) {
+export function SessionCard({ session, onDelete }: SessionCardProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
   const phaseInfo = phaseConfig[session.phase];
   const createdDate = new Date(session.createdAt).toLocaleDateString();
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await sessionsApi.delete(session.sessionId);
+      onDelete?.();
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      alert('Failed to delete session. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Link href={`/dashboard/sessions/${session.sessionId}`}>
@@ -33,9 +60,21 @@ export function SessionCard({ session }: SessionCardProps) {
                 Created {createdDate}
               </p>
             </div>
-            <Badge variant={phaseInfo.variant}>
-              {phaseInfo.label}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant={phaseInfo.variant}>
+                {phaseInfo.label}
+              </Badge>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
+                title="Delete session"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {session.masterPrompt && (
