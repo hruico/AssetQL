@@ -16,7 +16,7 @@ export function useStyle(styleProfileId: string | null) {
     queryKey: ['styles', styleProfileId],
     queryFn: async () => {
       if (!styleProfileId) return null;
-      const { styleProfile } = await stylesApi.get(styleProfileId);
+      const styleProfile = await stylesApi.get(styleProfileId);
       return styleProfile;
     },
     enabled: !!styleProfileId,
