@@ -1,4 +1,9 @@
 # Lambda function ARN variables
+variable "presign_upload_arn" {
+  description = "ARN of the presign-upload Lambda function"
+  type        = string
+}
+
 variable "session_manager_arn" {
   description = "ARN of the session-manager Lambda function"
   type        = string

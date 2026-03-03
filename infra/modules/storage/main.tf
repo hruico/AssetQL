@@ -31,5 +31,23 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
   }
 }
 
-# NOTE: S3 event notifications for asset-tagger moved to lambdas_core module
+# CORS configuration for presigned URL uploads
+resource "aws_s3_bucket_cors_configuration" "assets" {
+  bucket = aws_s3_bucket.assets.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "PUT", "POST", "DELETE", "HEAD"]
+    allowed_origins = [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://*.amplifyapp.com",
+      "https://*.cloudfront.net"
+    ]
+    expose_headers  = ["ETag", "x-amz-checksum-crc32"]
+    max_age_seconds = 3000
+  }
+}
+
+# NOTE: S3 event notifications for asset-tagger defined in root main.tf
 # to avoid circular dependency (storage → lambdas_core → storage)

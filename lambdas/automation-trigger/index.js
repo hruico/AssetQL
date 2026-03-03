@@ -1,5 +1,4 @@
 const { dynamo, sqs, GetCommand, QueryCommand, SendMessageBatchCommand, UpdateCommand, response } = require('../../shared');
-const { v4: uuidv4 } = require('uuid');
 
 /**
  * Automation Trigger Lambda

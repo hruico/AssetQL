@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
 const { dynamo, GetCommand, PutCommand, UpdateCommand, QueryCommand, response } = require('../../shared');
 
 // Define legal phase transitions
@@ -13,25 +12,47 @@ const LEGAL_TRANSITIONS = {
 };
 
 exports.handler = async (event) => {
-    console.log('Session Manager Event:', JSON.stringify(event, null, 2));
+    try {
+        // Debug logging at handler entry
+        console.log('=== Session Manager Handler Start ===');
+        console.log('HTTP Method:', event.httpMethod);
+        console.log('SESSIONS_TABLE_NAME defined?', !!process.env.SESSIONS_TABLE_NAME);
+        console.log('SESSIONS_TABLE_NAME value:', process.env.SESSIONS_TABLE_NAME);
+        console.log('Request Context:', JSON.stringify(event.requestContext, null, 2));
+        console.log('Full Event:', JSON.stringify(event, null, 2));
 
-    const httpMethod = event.httpMethod;
-    const pathParameters = event.pathParameters || {};
+        const httpMethod = event.httpMethod;
+        const pathParameters = event.pathParameters || {};
 
-    const path = event.path || '';
+        const path = event.path || '';
 
-    if (httpMethod === 'POST') {
-        return await createSession(event);
-    } else if (httpMethod === 'PUT' && path.endsWith('/phase')) {
-        // Only route to phase update if the path explicitly ends with /phase
-        return await updateSessionPhase(event);
-    } else if (httpMethod === 'GET' && pathParameters.sessionId) {
-        return await getSession(event);
-    } else if (httpMethod === 'GET' && !pathParameters.sessionId) {
-        // List all sessions for the user
-        return await listSessions(event);
-    } else {
-        return response(400, { error: 'Invalid request method or path' });
+        if (httpMethod === 'POST') {
+            return await createSession(event);
+        } else if (httpMethod === 'PUT' && path.endsWith('/phase')) {
+            // Only route to phase update if the path explicitly ends with /phase
+            return await updateSessionPhase(event);
+        } else if (httpMethod === 'GET' && pathParameters.sessionId) {
+            return await getSession(event);
+        } else if (httpMethod === 'GET' && !pathParameters.sessionId) {
+            // List all sessions for the user
+            return await listSessions(event);
+        } else {
+            return response(400, { error: 'Invalid request method or path' });
+        }
+    } catch (error) {
+        // Catch any unhandled errors and return proper API Gateway response
+        console.error('HANDLER ERROR:', error.message, error.stack);
+        
+        return {
+            statusCode: 500,
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            body: JSON.stringify({
+                error: error.message
+            })
+        };
     }
 };
 
@@ -41,35 +62,102 @@ exports.handler = async (event) => {
  */
 async function createSession(event) {
     try {
+        console.log('=== createSession START ===');
+        
+        // Step 1: Parse event.body
+        console.log('STEP 1: Parsing event.body');
+        console.log('Raw event.body:', event.body);
+        
+        const body = event.body ? JSON.parse(event.body) : {};
+        console.log('Parsed body:', JSON.stringify(body, null, 2));
+        
         const userId = event.requestContext.authorizer.claims.sub;
-        const body = JSON.parse(event.body || '{}');
+        console.log('userId from claims:', userId);
+        
+        const name = body.name || 'Untitled Session';
         const batchId = body.batchId || null; // Optional: link to a CSV batch immediately
+        console.log('Session name:', name);
+        console.log('batchId:', batchId);
 
-        const sessionId = uuidv4();
-        const now = new Date().toISOString();
+        // Step 2: Generate session data
+        console.log('STEP 2: Generating session data');
+        const sessionId = crypto.randomUUID();
+        const currentPhase = 'UPLOAD';
+        const createdAt = new Date().toISOString();
+        
+        console.log('Generated sessionId:', sessionId);
+        console.log('Initial currentPhase:', currentPhase);
+        console.log('createdAt:', createdAt);
 
         const sessionItem = {
             sessionId,
             userId,
+            name,
             batchId,
-            currentPhase: 'UPLOAD',
+            currentPhase,
             masterPrompt: '',
             lockedStyleElements: [],
             activeRefinements: [],
-            createdAt: now,
-            updatedAt: now
+            createdAt,
+            updatedAt: createdAt
         };
+        
+        console.log('Complete sessionItem:', JSON.stringify(sessionItem, null, 2));
 
+        // Step 3: Save to DynamoDB
+        console.log('STEP 3: Saving to DynamoDB');
+        console.log('Table name:', process.env.SESSIONS_TABLE_NAME);
+        
         await dynamo.send(new PutCommand({
             TableName: process.env.SESSIONS_TABLE_NAME,
             Item: sessionItem
         }));
+        
+        console.log('DynamoDB PutCommand SUCCESS');
 
-        return response(201, sessionItem);
+        // Step 4: Prepare response
+        console.log('STEP 4: Preparing response');
+        const responseData = {
+            sessionId,
+            userId,
+            name,
+            currentPhase,
+            createdAt
+        };
+        console.log('Response data:', JSON.stringify(responseData, null, 2));
+
+        // Step 5: Return response
+        console.log('STEP 5: Returning response with statusCode 201');
+        return {
+            statusCode: 201,
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "Content-Type,Authorization",
+                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+            },
+            body: JSON.stringify({
+                sessionId,
+                userId,
+                name,
+                currentPhase,
+                createdAt
+            })
+        };
 
     } catch (error) {
-        console.error('Error creating session:', error);
-        return response(500, { error: 'Failed to create session', details: error.message });
+        console.error('Error creating session:', error.message, error.stack);
+        return {
+            statusCode: 500,
+            headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+            },
+            body: JSON.stringify({
+                error: 'Failed to create session',
+                message: error.message
+            })
+        };
     }
 }
 

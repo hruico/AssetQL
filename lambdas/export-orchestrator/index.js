@@ -1,7 +1,6 @@
 const sharp = require('sharp');
 const archiver = require('archiver');  // ZIP creation library
 const { PassThrough } = require('stream');
-const { v4: uuidv4 } = require('uuid');
 const { s3, dynamo, GetObjectCommand, PutObjectCommand, QueryCommand, response } = require('../../shared');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
@@ -20,7 +19,7 @@ const PLATFORM_SIZES = {
 
 exports.handler = async (event) => {
   const { assetIds, platform } = JSON.parse(event.body);
-  const exportId = uuidv4();
+  const exportId = crypto.randomUUID();
   const sizes = PLATFORM_SIZES[platform] || PLATFORM_SIZES['unity'];
   // Build a ZIP in memory and stream it to S3
   const passThrough = new PassThrough();

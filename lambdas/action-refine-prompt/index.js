@@ -67,7 +67,7 @@ Return ONLY a JSON object with this exact structure (no explanation):
 
         const novaRes = await bedrock.send(new InvokeModelCommand({
             //Swapping nova with Micro because it's NO Image recognition work, only Text work and it's Cheap 
-            modelId: 'amazon.nova-micro-v1:0',
+            modelId: 'apac.amazon.nova-micro-v1:0',
             body: JSON.stringify(novaPayload),
             contentType: 'application/json'
         }));

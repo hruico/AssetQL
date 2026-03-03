@@ -4,6 +4,7 @@ import type { Session, SessionPhase } from '@/lib/types/api';
 
 // Normalize session response from backend
 function normalizeSession(session: any): Session {
+  if (!session) return session;
   return {
     ...session,
     phase: session.currentPhase || session.phase, // Backend uses currentPhase
@@ -31,8 +32,8 @@ export function useSession(sessionId: string | null) {
     queryKey: ['sessions', sessionId],
     queryFn: async () => {
       if (!sessionId) return null;
-      const { session } = await sessionsApi.get(sessionId);
-      return normalizeSession(session);
+      const response = await sessionsApi.get(sessionId);
+      return normalizeSession(response);
     },
     enabled: !!sessionId,
   });
@@ -44,7 +45,7 @@ export function useCreateSession() {
   return useMutation({
     mutationFn: async (name?: string) => {
       const response = await sessionsApi.create(name);
-      return normalizeSession(response.session);
+      return normalizeSession(response);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });
@@ -58,7 +59,7 @@ export function useUpdateSessionPhase() {
   return useMutation({
     mutationFn: async ({ sessionId, phase }: { sessionId: string; phase: SessionPhase }) => {
       const response = await sessionsApi.updatePhase(sessionId, phase);
-      return normalizeSession(response.session);
+      return normalizeSession(response);
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] });

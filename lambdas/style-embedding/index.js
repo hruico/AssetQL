@@ -1,107 +1,150 @@
-const { v4: uuidv4 } = require('uuid');
-const { bedrock, s3, dynamo, response, PutObjectCommand, PutCommand, QueryCommand, GetCommand, InvokeModelCommand } = require('../../shared/index.js');
+const { s3, dynamo, response, PutCommand, QueryCommand, GetCommand, GetObjectCommand } = require('../../shared/index.js');
+const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
+
+const bedrockClient = new BedrockRuntimeClient({ region: 'ap-south-1' });
 
 
 exports.handler = async (event) => {
-  const httpMethod = event.httpMethod;
-  const pathParameters = event.pathParameters || {};
+  try {
+    const httpMethod = event.httpMethod;
+    const pathParameters = event.pathParameters || {};
 
-  if (httpMethod === 'POST') {
-    return await createStyleProfile(event);
-  } else if (httpMethod === 'GET' && pathParameters.styleProfileId) {
-    return await getStyleProfile(event);
-  } else if (httpMethod === 'GET' && !pathParameters.styleProfileId) {
-    return await listStyleProfiles(event);
-  } else {
-    return response(400, { error: 'Invalid request method or path' });
+    if (httpMethod === 'POST') {
+      return await createStyleProfile(event);
+    } else if (httpMethod === 'GET' && pathParameters.styleProfileId) {
+      return await getStyleProfile(event);
+    } else if (httpMethod === 'GET' && !pathParameters.styleProfileId) {
+      return await listStyleProfiles(event);
+    } else {
+      return response(400, { error: 'Invalid request method or path' });
+    }
+  } catch (error) {
+    console.error('=== UNHANDLED ERROR IN STYLE EMBEDDING HANDLER ===');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'
+      },
+      body: JSON.stringify({
+        error: 'Internal server error in style embedding',
+        message: error.message,
+        type: error.name
+      })
+    };
   }
 };
 
 /**
  * POST /api/v1/styles
  * Creates a new style profile from a reference image
+ * 
+ * NEW ARCHITECTURE: Image is already uploaded to S3 via presigned URL.
+ * This Lambda receives only the S3 key, fetches the image, and analyzes it.
  */
 async function createStyleProfile(event) {
   try {
+    console.log('=== Style Embedding Handler Start ===');
+    console.log('HTTP Method:', event.httpMethod);
+    console.log('S3_BUCKET defined?', !!process.env.S3_BUCKET);
+    console.log('STYLES_TABLE_NAME defined?', !!process.env.STYLES_TABLE_NAME);
+
     const userId = event.requestContext.authorizer.claims.sub;
     
-    // Handle multipart/form-data from frontend
-    let imageBuffer, imageType, name;
-    
-    if (event.isBase64Encoded && event.body) {
-      // Parse multipart form data
-      const boundary = event.headers['content-type'].split('boundary=')[1];
-      const parts = Buffer.from(event.body, 'base64').toString('binary').split(`--${boundary}`);
-      
-      for (const part of parts) {
-        if (part.includes('Content-Disposition: form-data; name="referenceImage"')) {
-          // Extract filename and content type
-          const filenameMatch = part.match(/filename="(.+?)"/);
-          const filename = filenameMatch ? filenameMatch[1] : 'image.png';
-          imageType = filename.split('.').pop().toLowerCase();
-          
-          // Extract binary data (after double CRLF)
-          const dataStart = part.indexOf('\r\n\r\n') + 4;
-          const dataEnd = part.lastIndexOf('\r\n');
-          imageBuffer = Buffer.from(part.substring(dataStart, dataEnd), 'binary');
-          
-          // Use filename as name if not provided
-          name = filename.replace(/\.[^/.]+$/, '');
-        }
-      }
-    } else {
-      // Fallback: JSON body with base64
-      const body = JSON.parse(event.body);
-      imageBuffer = Buffer.from(body.imageBase64, 'base64');
-      imageType = body.imageType;
-      name = body.name;
+    // Safe body parsing
+    let body;
+    try {
+      body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body;
+    } catch (parseError) {
+      console.error('Body parse error. Raw body:', event.body?.substring(0, 200));
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ 
+          error: 'Invalid request body. Expected JSON with s3Key and name fields.',
+          hint: 'Body must be: { "s3Key": "style-references/uuid/file.png", "name": "My Style" }'
+        })
+      };
     }
 
-    if (!imageBuffer) {
-      return response(400, { error: 'No image provided' });
+    const { s3Key, name, styleProfileId: providedStyleProfileId } = body;
+
+    if (!s3Key) {
+      return {
+        statusCode: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: 'Missing required field: s3Key' })
+      };
     }
 
-    const styleProfileId = uuidv4();
+    console.log('Parsed body - s3Key:', s3Key, 'name:', name);
 
-    // 1. Save the reference image to S3
-    await s3.send(new PutObjectCommand({
+    // Use provided styleProfileId or generate new one
+    const styleProfileId = providedStyleProfileId || crypto.randomUUID();
+
+    console.log('Fetching image from S3:', s3Key);
+
+    // 1. Fetch the image from S3 (it's already uploaded via presigned URL)
+    const s3Response = await s3.send(new GetObjectCommand({
       Bucket: process.env.S3_BUCKET,
-      Key: `style-references/${styleProfileId}/reference.${imageType}`,
-      Body: imageBuffer,
-      ContentType: `image/${imageType}`
+      Key: s3Key
     }));
 
-    // 2. Call Bedrock Nova Lite to analyze the style (50x cheaper than Claude)
-    const bedrockPayload = {
+    // Convert S3 stream to buffer
+    const imageBuffer = await streamToBuffer(s3Response.Body);
+    
+    // Determine image format from S3 key file extension
+    const ext = s3Key.split('.').pop().toLowerCase();
+    const imageFormat = (ext === 'jpg' || ext === 'jpeg') ? 'jpeg' : 
+                       (ext === 'gif') ? 'gif' :
+                       (ext === 'webp') ? 'webp' : 'png';
+
+    console.log('Image fetched successfully, size:', imageBuffer.length, 'bytes', 'format:', imageFormat);
+
+    // 2. Call Bedrock Nova Lite to analyze the style using ConverseCommand
+    const converseResponse = await bedrockClient.send(new ConverseCommand({
+      modelId: 'apac.amazon.nova-lite-v1:0',
       messages: [{
         role: 'user',
         content: [
-          { image: { format: imageType === 'jpg' ? 'jpeg' : imageType, source: { bytes: imageBuffer } } },
-          { text: `Analyze the visual style of this image and return ONLY a JSON object (no explanation) with these exact fields:
+          {
+            image: {
+              format: imageFormat,
+              source: {
+                bytes: imageBuffer
+              }
+            }
+          },
+          {
+            text: `Analyze this reference image and extract its visual style. Return ONLY valid JSON with this exact structure, no markdown:
 {
   "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"],
-  "composition": "description of layout and composition",
-  "texture": "description of textures and surface quality",
-  "lighting": "description of lighting style and mood",
-  "artStyle": "e.g. fantasy illustration, photorealistic, flat cartoon",
-  "mood": "1-3 words describing the emotional atmosphere",
-  "negativePrompt": "elements to avoid for style consistency"
-}` }
+  "composition": "description of layout and framing",
+  "texture": "description of surface textures",
+  "lighting": "description of lighting style",
+  "artStyle": "description of art style",
+  "mood": "description of emotional tone",
+  "negativePrompt": "elements to avoid in generation"
+}`
+          }
         ]
       }],
-      inferenceConfig: { maxTokens: 1024, temperature: 0.3 }
-    };
-
-    const bedrockRes = await bedrock.send(new InvokeModelCommand({
-      modelId: 'amazon.nova-lite-v1:0',
-      body: JSON.stringify(bedrockPayload),
-      contentType: 'application/json'
+      inferenceConfig: {
+        maxTokens: 1024,
+        temperature: 0.3
+      }
     }));
-    const responseBody = JSON.parse(Buffer.from(bedrockRes.body).toString());
-    const rawText = responseBody.output.message.content[0].text;
 
-    const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
-    const styleDescriptors = JSON.parse(cleanText);
+    // Parse the response
+    const responseText = converseResponse.output.message.content[0].text;
+    // Strip markdown code fences if present
+    const cleanJson = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const styleDescriptors = JSON.parse(cleanJson);
 
     // 3. Save style profile to DynamoDB
     await dynamo.send(new PutCommand({
@@ -110,7 +153,7 @@ async function createStyleProfile(event) {
         styleProfileId,
         userId,
         name: name || 'Untitled Style',
-        referenceImageKey: `style-references/${styleProfileId}/reference.${imageType}`,
+        referenceImageKey: s3Key, // Use the provided S3 key
         descriptors: styleDescriptors,
         lockedParams: [],
         deviationThreshold: 85,
@@ -118,12 +161,42 @@ async function createStyleProfile(event) {
       }
     }));
 
+    console.log('Style profile created successfully:', styleProfileId);
+
     return response(201, { styleProfile: { styleProfileId, name, descriptors: styleDescriptors } });
     
   } catch (error) {
-    console.error('Error creating style profile:', error);
-    return response(500, { error: 'Failed to create style profile', details: error.message });
+    console.error('=== ERROR IN CREATE STYLE PROFILE ===');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    
+    return {
+      statusCode: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Amz-Date, X-Api-Key, X-Amz-Security-Token'
+      },
+      body: JSON.stringify({
+        error: 'Failed to create style profile',
+        message: error.message,
+        type: error.name
+      })
+    };
   }
+}
+
+/**
+ * Helper function to convert S3 stream to Buffer
+ */
+async function streamToBuffer(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+  });
 }
 
 /**

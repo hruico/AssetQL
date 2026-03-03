@@ -37,7 +37,7 @@ exports.handler = async (event) => {
   };
 
   const tagRes = await bedrock.send(new InvokeModelCommand({
-    modelId: 'amazon.nova-lite-v1:0',
+    modelId: 'apac.amazon.nova-lite-v1:0',
     body: JSON.stringify(taggingPayload),
     contentType: 'application/json'
   }));

@@ -1,5 +1,4 @@
 const { dynamo, bedrockAgentRuntime, PutCommand, InvokeAgentCommand, response } = require('../../shared');
-const { v4: uuidv4 } = require('uuid');
 
 /**
  * Feedback Handler Lambda
@@ -48,7 +47,7 @@ exports.handler = async (event) => {
   }
 
   // Generate feedback ID
-  const feedbackId = uuidv4();
+  const feedbackId = crypto.randomUUID();
   const iterationNumber = Date.now() * 1000 + Math.floor(Math.random() * 1000);
   const createdAt = new Date().toISOString();
 
