@@ -30,6 +30,16 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
+        // Enhanced error logging
+        console.error('[API Client Error]', {
+          url: error.config?.url,
+          method: error.config?.method,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          message: error.message,
+        });
+
         if (error.response?.status === 401) {
           if (typeof window !== 'undefined') {
             window.location.href = '/login';

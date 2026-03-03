@@ -3,6 +3,12 @@ const { dynamo, PutCommand, DeleteCommand, QueryCommand } = require('../../share
 
 
 exports.handler = async (event) => {
+  // Guard: Ensure requestContext exists before destructuring
+  if (!event.requestContext) {
+    console.error('Missing requestContext in event:', JSON.stringify(event));
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid WebSocket event' }) };
+  }
+
   const { routeKey, connectionId } = event.requestContext;
   const apiClient = new ApiGatewayManagementApiClient({
     endpoint: `https://${event.requestContext.domainName}/${event.requestContext.stage}`

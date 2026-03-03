@@ -44,7 +44,13 @@ export const stylesApi = {
     }
 
     // Step 3: Create style profile with s3Key
-    return apiClient.post('/styles', { s3Key, name });
+    const payload = { s3Key, name };
+    console.log('[stylesApi.create] Sending payload to /styles:', payload);
+    
+    const response = await apiClient.post('/styles', payload);
+    console.log('[stylesApi.create] Response from /styles:', response);
+    
+    return response;
   },
 
   list: async (): Promise<{ styleProfiles: StyleProfile[] }> => {
