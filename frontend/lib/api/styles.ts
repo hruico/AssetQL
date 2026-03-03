@@ -47,7 +47,7 @@ export const stylesApi = {
     const payload = { s3Key, name };
     console.log('[stylesApi.create] Sending payload to /styles:', payload);
     
-    const response = await apiClient.post('/styles', payload);
+    const response = await apiClient.post<CreateStyleProfileResponse>('/styles', payload);
     console.log('[stylesApi.create] Response from /styles:', response);
     
     return response;
