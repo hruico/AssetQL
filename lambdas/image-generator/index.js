@@ -3,6 +3,7 @@ const { bedrock, s3, sqs, dynamo, response,
         InvokeModelCommand, ConverseCommand, SendMessageBatchCommand } = require('../../shared');
 const { SQSClient, SendMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
 const { BedrockRuntimeClient } = require('@aws-sdk/client-bedrock-runtime');
+const crypto = require('crypto');
 
 // Separate Bedrock client for us-east-1 (Stable Image Core availability)
 const bedrockUsEast1 = new BedrockRuntimeClient({ region: 'us-east-1' });

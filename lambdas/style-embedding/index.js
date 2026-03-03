@@ -1,5 +1,6 @@
 const { s3, dynamo, response, PutCommand, QueryCommand, GetCommand, GetObjectCommand } = require('../../shared/index.js');
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
+const crypto = require('crypto');
 
 const bedrockClient = new BedrockRuntimeClient({ region: 'ap-south-1' });
 

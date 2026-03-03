@@ -3,6 +3,7 @@ const archiver = require('archiver');  // ZIP creation library
 const { PassThrough } = require('stream');
 const { s3, dynamo, GetObjectCommand, PutObjectCommand, QueryCommand, response } = require('../../shared');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const crypto = require('crypto');
 
 
 const PLATFORM_SIZES = {

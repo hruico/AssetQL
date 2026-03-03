@@ -1,4 +1,5 @@
 const { dynamo, sqs, response, PutCommand, UpdateCommand, SendMessageBatchCommand, GetCommand, QueryCommand } = require('../../shared');
+const crypto = require('crypto');
 
 
 exports.handler = async (event) => {

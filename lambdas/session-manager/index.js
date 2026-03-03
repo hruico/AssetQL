@@ -1,4 +1,5 @@
 const { dynamo, GetCommand, PutCommand, UpdateCommand, QueryCommand, response } = require('../../shared');
+const crypto = require('crypto');
 
 // Define legal phase transitions
 // Each phase can only transition to one specific next phase

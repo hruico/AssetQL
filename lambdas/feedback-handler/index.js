@@ -1,4 +1,5 @@
 const { dynamo, bedrockAgentRuntime, PutCommand, InvokeAgentCommand, response } = require('../../shared');
+const crypto = require('crypto');
 
 /**
  * Feedback Handler Lambda

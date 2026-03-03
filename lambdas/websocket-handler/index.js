@@ -9,9 +9,9 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid WebSocket event' }) };
   }
 
-  const { routeKey, connectionId } = event.requestContext;
+  const { routeKey, connectionId, domainName, stage } = event.requestContext;
   const apiClient = new ApiGatewayManagementApiClient({
-    endpoint: `https://${event.requestContext.domainName}/${event.requestContext.stage}`
+    endpoint: `https://${domainName}/${stage}`
   });
 
 
