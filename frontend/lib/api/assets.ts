@@ -1,14 +1,22 @@
 import { apiClient } from './client';
-import type { Asset } from '../types/api';
+import { Asset } from '../types/api';
+
+export interface AssetsListResponse {
+  assets: Asset[];
+}
+
+export interface AssetResponse {
+  asset: Asset;
+}
 
 export const assetsApi = {
-  // Get a specific asset
-  get: async (assetId: string): Promise<{ asset: Asset }> => {
-    return apiClient.get(`/assets/${assetId}`);
+  list: async (): Promise<AssetsListResponse> => {
+    const response = await apiClient.get<AssetsListResponse>('/assets');
+    return response;
   },
 
-  // Get asset download URL (presigned S3 URL)
-  getDownloadUrl: async (assetId: string): Promise<{ url: string }> => {
-    return apiClient.get(`/assets/${assetId}/download`);
+  get: async (assetId: string): Promise<AssetResponse> => {
+    const response = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
+    return response;
   },
 };

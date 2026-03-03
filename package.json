@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "pnpm --filter frontend dev",
     "build": "pnpm --filter frontend build",
-    "install:all": "pnpm install --recursive"
+    "install:all": "pnpm install --recursive",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +29,14 @@
     "uuid": "^13.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["sharp"]
+    "onlyBuiltDependencies": [
+      "sharp"
+    ]
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "aws-sdk-client-mock": "^4.1.0",
+    "fast-check": "^4.5.3",
+    "jest": "^30.2.0"
   }
 }

@@ -37,6 +37,7 @@ export interface StyleProfile {
   userId: string;
   name?: string;
   referenceImageKey: string;
+  referenceUrl?: string;
   descriptors: StyleDescriptors;
   lockedParams?: string[];
   deviationThreshold?: number;

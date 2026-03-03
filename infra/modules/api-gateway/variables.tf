@@ -24,6 +24,11 @@ variable "feedback_handler_arn" {
   type        = string
 }
 
+variable "assets_handler_arn" {
+  description = "ARN of the assets-handler Lambda function"
+  type        = string
+}
+
 variable "automation_trigger_arn" {
   description = "ARN of the automation-trigger Lambda function"
   type        = string

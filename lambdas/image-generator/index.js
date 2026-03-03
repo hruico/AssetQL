@@ -28,7 +28,14 @@ exports.handler = async (event) => {
       // Seems unneccesary -> costs extra computation
 
 
-    // 2. Fetch style profile descriptors
+    // 2. Fetch batch to get userId
+    const batchRes = await dynamo.send(new GetCommand({ 
+      TableName: process.env.BATCHES_TABLE_NAME, 
+      Key: { batchId } 
+    }));
+    const userId = batchRes.Item?.userId || 'unknown';
+
+    // 3. Fetch style profile descriptors
     const styleRes = await dynamo.send(new GetCommand({ TableName: process.env.STYLES_TABLE_NAME, Key: { styleProfileId } }));
     const style = styleRes.Item;
     const negativePrompt = style.descriptors.negativePrompt || 'blurry, low quality, distorted';
@@ -125,7 +132,7 @@ exports.handler = async (event) => {
     // 7. Create the asset record in DynamoDB
     await dynamo.send(new PutCommand({
       TableName: process.env.ASSETS_TABLE_NAME,
-      Item: { assetId, batchId, userId: 'unknown', s3Key,
+      Item: { assetId, batchId, userId, s3Key,
               prompt, styleScore, dimensions: { width: config.width || 1024, height: config.height || 1024 },
               createdAt: Date.now(), tags: [], category: 'uncategorized' }
     }));

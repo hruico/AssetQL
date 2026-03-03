@@ -110,6 +110,9 @@ module "lambdas_api" {
   environment         = var.environment
   feedback_table_name = module.database.feedback_table_name
   sessions_table_name = module.database.sessions_table_name
+  batches_table_name  = module.database.batches_table_name
+  assets_table_name   = module.database.assets_table_name
+  assets_bucket_name  = module.storage.assets_bucket_name
 
   # Reuse shared IAM role from lambdas-core
   lambda_execution_role_arn  = module.lambdas_core.lambda_execution_role_arn
@@ -143,6 +146,7 @@ module "api_gateway" {
   # Automation and export Lambda ARNs from lambdas-core module
   automation_trigger_arn = module.lambdas_core.automation_trigger_arn
   export_handler_arn     = module.lambdas_core.export_handler_arn
+  assets_handler_arn     = module.lambdas_core.assets_handler_arn
 }
 
 module "websocket_api" {

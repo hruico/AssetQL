@@ -17,8 +17,11 @@ resource "aws_lambda_function" "feedback_handler" {
 
   environment {
     variables = {
+      S3_BUCKET                = var.assets_bucket_name
       FEEDBACK_TABLE_NAME      = var.feedback_table_name
       SESSIONS_TABLE_NAME      = var.sessions_table_name
+      BATCHES_TABLE_NAME       = var.batches_table_name
+      ASSETS_TABLE_NAME        = var.assets_table_name
       PROMPT_ENGINEER_AGENT_ID = var.prompt_engineer_agent_id
       PROMPT_ENGINEER_ALIAS_ID = var.prompt_engineer_alias_id
     }
