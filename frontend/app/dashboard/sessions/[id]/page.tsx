@@ -94,6 +94,20 @@ export default function SessionDetailPage() {
       }
     }
 
+    // Validate SINGLE_ITERATION phase - must have generated test image
+    if (currentPhase === 'SINGLE_ITERATION') {
+      const batchData = sessionStorage.getItem(`session_${sessionId}_batch`);
+      if (!batchData) {
+        setValidationError('Please generate a test image before continuing.');
+        return;
+      }
+      const { batchId, status } = JSON.parse(batchData);
+      if (!batchId || status !== 'done') {
+        setValidationError('Please wait for the test image to be generated before continuing.');
+        return;
+      }
+    }
+
     const nextPhase = PHASE_TRANSITIONS[currentPhase];
     if (!nextPhase) return;
 
@@ -398,7 +412,10 @@ export default function SessionDetailPage() {
                       {csvRowCount} rows detected
                     </div>
                     <button
-                      onClick={() => csvInputRef.current?.click()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        csvInputRef.current?.click();
+                      }}
                       style={{ fontSize: '0.8rem', color: '#888', cursor: 'pointer',
                         background: 'none', border: 'none', textDecoration: 'underline' }}
                     >
@@ -411,7 +428,10 @@ export default function SessionDetailPage() {
                       Upload generation data
                     </div>
                     <button
-                      onClick={() => csvInputRef.current?.click()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        csvInputRef.current?.click();
+                      }}
                       style={{
                         padding: '0.5rem 1rem', background: '#333', color: '#fff',
                         border: '1px solid #555', borderRadius: 6, cursor: 'pointer'
@@ -443,7 +463,7 @@ export default function SessionDetailPage() {
 function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; uploadData: any }) {
   const [status, setStatus] = useState<'idle' | 'creating' | 'waiting' | 'done' | 'error'>('idle');
   const [batchId, setBatchId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState('A high-quality product photo on white background');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -475,10 +495,8 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
       return;
     }
 
-    if (!prompt.trim()) {
-      setError('Please enter a prompt for test generation.');
-      return;
-    }
+    // Use default prompt if empty
+    const finalPromptTemplate = prompt.trim() || 'A high-quality product photo on white background';
 
     setStatus('creating');
     setError(null);
@@ -487,7 +505,7 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
       const firstRow = getFirstCsvRow();
 
       // Build prompt with variable substitution from first CSV row
-      let finalPrompt = prompt;
+      let finalPrompt = finalPromptTemplate;
       Object.entries(firstRow).forEach(([key, value]) => {
         finalPrompt = finalPrompt.replace(new RegExp(`\\{${key}\\}`, 'g'), value);
       });
@@ -503,8 +521,8 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
         },
         body: JSON.stringify({
           styleProfileId: uploadData.styleProfileId,
-          template: prompt,                    // was: promptTemplate
-          csvRows: [firstRow],                 // was: csvData
+          template: finalPromptTemplate,
+          csvRows: [firstRow],
           batchName: `Test - Session ${sessionId.substring(0, 8)}`,
           config: {
             width: 1024,
@@ -523,10 +541,10 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
 
       const result = await response.json();
       setBatchId(result.batchId);
-      setStatus('waiting');
+      setStatus('done');
       sessionStorage.setItem(
         `session_${sessionId}_batch`,
-        JSON.stringify({ batchId: result.batchId, status: 'waiting' })
+        JSON.stringify({ batchId: result.batchId, status: 'done' })
       );
     } catch (err: any) {
       setStatus('error');
@@ -603,12 +621,12 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
         {status === 'idle' && (
           <button
             onClick={handleGenerateTest}
-            disabled={!uploadData || !prompt.trim()}
+            disabled={!uploadData}
             style={{
               padding: '0.75rem 2rem', background: '#0070f3', color: '#fff',
               border: 'none', borderRadius: 6, cursor: 'pointer',
               fontSize: '1rem', fontWeight: 500,
-              opacity: (!uploadData || !prompt.trim()) ? 0.5 : 1
+              opacity: !uploadData ? 0.5 : 1
             }}
           >
             Generate Test Image
@@ -619,7 +637,7 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
           <div style={{ color: '#888' }}>⏳ Creating batch job...</div>
         )}
 
-        {status === 'waiting' && batchId && (
+        {(status === 'done' || status === 'waiting') && batchId && (
           <div>
             <div style={{ color: '#22c55e', marginBottom: '1rem', fontWeight: 500 }}>
               ✓ Batch created! ID: {batchId}
@@ -676,20 +694,272 @@ function SingleIterationPhase({ sessionId, uploadData }: { sessionId: string; up
 }
 
 function BatchReviewPhaseView({ session }: { session: any }) {
+  const [assets, setAssets] = useState<any[]>([]);
+  const [batch, setBatch] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [refinedPrompt, setRefinedPrompt] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadAssets();
+  }, [session.sessionId]);
+
+  const loadAssets = async () => {
+    try {
+      setLoading(true);
+      const { getIdToken } = await import('@/lib/auth/cognito');
+      const token = await getIdToken();
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/feedback/${session.sessionId}/assets`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to load assets');
+      }
+
+      const data = await response.json();
+      setAssets(data.assets || []);
+      setBatch(data.batch);
+    } catch (err: any) {
+      console.error('Failed to load assets:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!feedbackText.trim()) {
+      setError('Please enter feedback before submitting');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+      
+      const { getIdToken } = await import('@/lib/auth/cognito');
+      const token = await getIdToken();
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/feedback/${session.sessionId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            feedbackText,
+            rating: 4
+          })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to submit feedback');
+      }
+
+      const data = await response.json();
+      setRefinedPrompt(data.refinedPrompt);
+      setFeedbackText('');
+      
+      // Show success message
+      alert('Feedback submitted! Prompt has been refined by AI.');
+    } catch (err: any) {
+      console.error('Failed to submit feedback:', err);
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Batch Review Phase</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
           Review the generated batch and verify style consistency before locking the style.
         </p>
-        <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Batch assets will appear here once generated.
-          </p>
-        </div>
+
+        {loading && (
+          <div className="text-center py-8 text-zinc-600 dark:text-zinc-400">
+            Loading assets...
+          </div>
+        )}
+
+        {error && (
+          <div style={{
+            color: '#ef4444', background: '#1a0000', border: '1px solid #ef4444',
+            borderRadius: 6, padding: '0.75rem', marginBottom: '1rem'
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {!loading && assets.length === 0 && (
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              No assets found. Please generate a test batch first in the Single Iteration phase.
+            </p>
+          </div>
+        )}
+
+        {!loading && assets.length > 0 && (
+          <div className="space-y-6">
+            {/* Batch Info */}
+            {batch && (
+              <div style={{
+                background: '#111', border: '1px solid #333', borderRadius: 8,
+                padding: '1rem', display: 'flex', gap: '2rem', flexWrap: 'wrap'
+              }}>
+                <div>
+                  <span style={{ color: '#888', fontSize: '0.85rem' }}>Batch Name</span>
+                  <div style={{ fontWeight: 500 }}>{batch.name}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#888', fontSize: '0.85rem' }}>Total Assets</span>
+                  <div style={{ fontWeight: 500 }}>{assets.length}</div>
+                </div>
+                <div>
+                  <span style={{ color: '#888', fontSize: '0.85rem' }}>Status</span>
+                  <div style={{ fontWeight: 500, color: '#22c55e' }}>
+                    {batch.completedTasks} / {batch.totalTasks} Complete
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Assets Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+              gap: '1rem'
+            }}>
+              {assets.map((asset: any) => (
+                <div
+                  key={asset.assetId}
+                  style={{
+                    border: '1px solid #333',
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    background: '#111'
+                  }}
+                >
+                  <div style={{ position: 'relative', paddingBottom: '100%', background: '#000' }}>
+                    <img
+                      src={asset.s3Url || asset.thumbnailUrl}
+                      alt={asset.metadata?.item_name || 'Generated asset'}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  </div>
+                  <div style={{ padding: '0.75rem' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 500, marginBottom: '0.25rem' }}>
+                      {asset.metadata?.item_name || asset.assetId.slice(0, 8)}
+                    </div>
+                    {asset.tags && asset.tags.length > 0 && (
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                        {asset.tags.slice(0, 3).map((tag: string, idx: number) => (
+                          <span
+                            key={idx}
+                            style={{
+                              fontSize: '0.7rem',
+                              padding: '0.125rem 0.5rem',
+                              background: '#333',
+                              borderRadius: 4,
+                              color: '#888'
+                            }}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Feedback Form */}
+            <div style={{
+              background: '#111', border: '1px solid #333', borderRadius: 8,
+              padding: '1.5rem'
+            }}>
+              <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>
+                Provide Feedback for AI Refinement
+              </h3>
+              
+              {refinedPrompt && (
+                <div style={{
+                  background: '#0a1628', border: '1px solid #0070f3',
+                  borderRadius: 6, padding: '1rem', marginBottom: '1rem'
+                }}>
+                  <div style={{ color: '#0070f3', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>
+                    ✨ AI-Refined Prompt
+                  </div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', color: '#fff' }}>
+                    {refinedPrompt}
+                  </div>
+                </div>
+              )}
+
+              <textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder="Describe what you'd like to improve... (e.g., 'Make colors more vibrant', 'Add more detail to backgrounds', 'Reduce shadows')"
+                style={{
+                  width: '100%',
+                  minHeight: '100px',
+                  padding: '0.75rem',
+                  background: '#000',
+                  border: '1px solid #333',
+                  borderRadius: 6,
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  resize: 'vertical',
+                  marginBottom: '1rem',
+                  boxSizing: 'border-box'
+                }}
+              />
+
+              <button
+                onClick={handleSubmitFeedback}
+                disabled={submitting || !feedbackText.trim()}
+                style={{
+                  padding: '0.75rem 2rem',
+                  background: submitting || !feedbackText.trim() ? '#333' : '#0070f3',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: submitting || !feedbackText.trim() ? 'not-allowed' : 'pointer',
+                  fontSize: '1rem',
+                  fontWeight: 500
+                }}
+              >
+                {submitting ? 'Submitting...' : 'Submit Feedback & Refine Prompt'}
+              </button>
+
+              <div style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: '#888' }}>
+                💡 The PromptEngineerAgent will analyze your feedback and refine the master prompt using AI.
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

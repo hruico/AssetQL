@@ -60,6 +60,11 @@ output "asset_tagger_arn" {
   value       = aws_lambda_function.asset_tagger.arn
 }
 
+output "assets_handler_arn" {
+  description = "ARN of the assets-handler Lambda function"
+  value       = aws_lambda_function.assets_handler.arn
+}
+
 output "websocket_handler_arn" {
   description = "ARN of the websocket-handler Lambda function"
   value       = aws_lambda_function.websocket_handler.arn

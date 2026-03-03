@@ -245,8 +245,31 @@ async function listStyleProfiles(event) {
       ScanIndexForward: false // Sort by createdAt descending (newest first)
     }));
 
+    // Generate presigned URLs for reference images
+    const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+    const { GetObjectCommand } = require('@aws-sdk/client-s3');
+    
+    const profilesWithUrls = await Promise.all(
+      (result.Items || []).map(async (profile) => {
+        try {
+          const referenceUrl = await getSignedUrl(
+            s3,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: profile.referenceImageKey
+            }),
+            { expiresIn: 3600 }
+          );
+          return { ...profile, referenceUrl };
+        } catch (err) {
+          console.error(`Failed to generate URL for ${profile.styleProfileId}:`, err);
+          return profile;
+        }
+      })
+    );
+
     return response(200, {
-      styleProfiles: result.Items || []
+      styleProfiles: profilesWithUrls
     });
 
   } catch (error) {

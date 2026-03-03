@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { assetsApi } from '../../../lib/api';
 
 export default function AssetsPage() {
   const [assets, setAssets] = useState<any[]>([]);
@@ -9,32 +10,9 @@ export default function AssetsPage() {
   useEffect(() => {
     const fetchAssets = async () => {
       try {
-        const { getIdToken } = await import('../../../lib/auth/cognito');
-        const token = await getIdToken();
-        
-        if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
-          console.error('API base URL not configured');
-          setLoading(false);
-          return;
-        }
-        
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/assets`, 
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        
-        if (res.status === 404) {
-          // Endpoint not yet implemented - show empty state
-          setAssets([]);
-          setLoading(false);
-          return;
-        }
-        
-        if (res.ok) {
-          const data = await res.json();
-          setAssets(data.assets || []);
-        }
+        const data = await assetsApi.list();
+        setAssets(data.assets || []);
       } catch (err) {
-        // Network error or missing endpoint - show empty state silently
         console.error('Failed to load assets:', err);
       } finally {
         setLoading(false);

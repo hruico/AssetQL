@@ -13,6 +13,16 @@ variable "sessions_table_name" {
   description = "Name of the DynamoDB table for user sessions"
 }
 
+variable "batches_table_name" {
+  type        = string
+  description = "Name of the DynamoDB table for batches"
+}
+
+variable "assets_table_name" {
+  type        = string
+  description = "Name of the DynamoDB table for assets"
+}
+
 variable "lambda_execution_role_arn" {
   type        = string
   description = "ARN of the shared Lambda execution IAM role from lambdas-core module"
@@ -36,4 +46,9 @@ variable "prompt_engineer_alias_id" {
 variable "common_dependencies_layer_arn" {
   type        = string
   description = "ARN of the common dependencies Lambda Layer"
+}
+
+variable "assets_bucket_name" {
+  type        = string
+  description = "Name of the S3 bucket for storing generated assets"
 }

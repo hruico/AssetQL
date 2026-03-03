@@ -1,6 +1,107 @@
 const { dynamo, sqs, response, PutCommand, UpdateCommand, SendMessageBatchCommand, GetCommand, QueryCommand } = require('../../shared');
 const crypto = require('crypto');
 
+// Smart template generation based on CSV column names
+function generateSmartTemplate(columns) {
+  // Common column name patterns and their prompt templates
+  const patterns = {
+    // Product/Item patterns
+    item: ['item', 'item_name', 'itemname', 'product', 'product_name', 'productname', 'name', 'object'],
+    category: ['category', 'type', 'item_type', 'product_type'],
+    description: ['description', 'desc', 'details'],
+    color: ['color', 'colour', 'primary_color'],
+    material: ['material', 'texture', 'surface'],
+    environment: ['environment', 'setting', 'background', 'scene', 'location'],
+    
+    // Character patterns
+    character: ['character', 'character_name', 'person', 'subject'],
+    pose: ['pose', 'action', 'activity', 'stance'],
+    emotion: ['emotion', 'mood', 'expression', 'feeling'],
+    outfit: ['outfit', 'clothing', 'attire', 'costume'],
+    
+    // General attributes
+    style: ['style', 'art_style', 'visual_style'],
+    angle: ['angle', 'view', 'perspective', 'camera_angle'],
+    lighting: ['lighting', 'light', 'illumination']
+  };
+  
+  // Normalize column names for matching
+  const normalizedColumns = columns.map(col => col.toLowerCase().replace(/[_\s-]/g, ''));
+  
+  // Detect which pattern categories are present
+  const detected = {};
+  for (const [key, variations] of Object.entries(patterns)) {
+    const match = columns.find((col, idx) => 
+      variations.some(v => normalizedColumns[idx].includes(v.replace(/[_\s-]/g, '')))
+    );
+    if (match) detected[key] = match;
+  }
+  
+  // Build intelligent prompt based on detected columns
+  let template = 'A high-quality';
+  
+  // Add style if present
+  if (detected.style) {
+    template += ' {' + detected.style + '}';
+  }
+  
+  // Core subject (item, character, or product)
+  if (detected.item) {
+    template += ' product photo of {' + detected.item + '}';
+  } else if (detected.character) {
+    template += ' illustration of {' + detected.character + '}';
+  } else {
+    // Use first column as main subject
+    template += ' image of {' + columns[0] + '}';
+  }
+  
+  // Add descriptive attributes
+  if (detected.color) {
+    template += ' in {' + detected.color + '}';
+  }
+  
+  if (detected.material) {
+    template += ' with {' + detected.material + '} texture';
+  }
+  
+  if (detected.pose) {
+    template += ' in {' + detected.pose + '} pose';
+  }
+  
+  if (detected.outfit) {
+    template += ' wearing {' + detected.outfit + '}';
+  }
+  
+  if (detected.emotion) {
+    template += ' with {' + detected.emotion + '} expression';
+  }
+  
+  // Add environment/setting
+  if (detected.environment) {
+    template += ', set in {' + detected.environment + '}';
+  }
+  
+  // Add camera/technical details
+  if (detected.angle) {
+    template += ', {' + detected.angle + '} view';
+  }
+  
+  if (detected.lighting) {
+    template += ', {' + detected.lighting + '} lighting';
+  }
+  
+  // Add category context if available
+  if (detected.category) {
+    template += ', {' + detected.category + '} style';
+  }
+  
+  // Professional quality suffix
+  template += ', professional photography, detailed, sharp focus';
+  
+  return template;
+}
+
+
 
 exports.handler = async (event) => {
   try {
@@ -27,29 +128,59 @@ exports.handler = async (event) => {
 
 async function createBatch(event) {
   const userId = event.requestContext.authorizer.claims.sub;
-  const { styleProfileId, csvRows, template, config, batchName } = JSON.parse(event.body);
+  const { styleProfileId, csvRows, template, config, batchName, phase = 'test', parentBatchId } = JSON.parse(event.body);
   // csvRows is an array of objects parsed from the uploaded CSV
-  // template is a string like: 'A {style} illustration of {subject} in {environment}'
+  // template is optional - if not provided, auto-generates from CSV columns
   // config has: { width, height, steps, cfgScale, concurrency }
+  // phase: 'test' (default) or 'full' - determines if this is a test batch or full batch
+  // parentBatchId: optional, links full batch to its test batch
 
   // Validate required fields
   if (!styleProfileId) return response(400, { error: 'styleProfileId is required' });
-  if (!template) return response(400, { error: 'template is required' });
   if (!csvRows || !Array.isArray(csvRows) || csvRows.length === 0) {
     return response(400, { error: 'csvRows must be a non-empty array' });
   }
 
   const batchId = crypto.randomUUID();
-  const totalTasks = csvRows.length;
+  
+  // Calculate which rows to process based on phase
+  let rowsToProcess = csvRows;
+  if (phase === 'test') {
+    // Test batch: 10% of total, minimum 10 items, or 30% if less than 10 items
+    const totalRows = csvRows.length;
+    let testBatchSize;
+    
+    if (totalRows >= 100) {
+      // 10% for large batches (100+ items)
+      testBatchSize = Math.ceil(totalRows * 0.1);
+    } else if (totalRows >= 10) {
+      // At least 10 items for medium batches
+      testBatchSize = Math.max(10, Math.ceil(totalRows * 0.1));
+    } else {
+      // 30% for small batches (less than 10 items)
+      testBatchSize = Math.max(1, Math.ceil(totalRows * 0.3));
+    }
+    
+    rowsToProcess = csvRows.slice(0, testBatchSize);
+  }
+  
+  const totalTasks = rowsToProcess.length;
+  
+  // Auto-generate template if not provided
+  let finalTemplate = template;
+  if (!finalTemplate) {
+    const columns = Object.keys(csvRows[0]);
+    finalTemplate = generateSmartTemplate(columns);
+  }
  // 1. Fetch style profile to get descriptors
   const styleRes = await dynamo.send(new GetCommand({ TableName: process.env.STYLES_TABLE_NAME, Key: { styleProfileId } }));
   const style = styleRes.Item;
   if (!style) return response(404, { error: `Style profile ${styleProfileId} not found` });
 
 
-  const tasks = csvRows.map(row => {
+  const tasks = rowsToProcess.map(row => {
     // Replace {variable} placeholders with CSV column values
-    let prompt = template.replace(/\{(\w+)\}/g, (_, key) => row[key] || '');
+    let prompt = finalTemplate.replace(/\{(\w+)\}/g, (_, key) => row[key] || '');
     // Append style modifiers from the style profile
     prompt += `, ${style.descriptors?.artStyle || ''}, ${style.descriptors?.mood || ''} atmosphere`;
     prompt += `, colors: ${(style.descriptors?.colorPalette || []).join(', ')}`;
@@ -58,10 +189,34 @@ async function createBatch(event) {
 
 
   
+  const batchItem = {
+    batchId,
+    userId,
+    name: batchName,
+    status: 'queued',
+    totalTasks,
+    completedTasks: 0,
+    failedTasks: 0,
+    styleProfileId,
+    config,
+    phase,
+    template: finalTemplate,
+    createdAt: Date.now()
+  };
+  
+  // Add parentBatchId if this is a full batch
+  if (parentBatchId) {
+    batchItem.parentBatchId = parentBatchId;
+  }
+  
+  // Add totalCsvRows if this is a test batch (to track full batch size)
+  if (phase === 'test') {
+    batchItem.totalCsvRows = csvRows.length;
+  }
+  
   await dynamo.send(new PutCommand({
     TableName: process.env.BATCHES_TABLE_NAME,
-    Item: { batchId, userId, name: batchName, status: 'queued', totalTasks,
-            completedTasks: 0, failedTasks: 0, styleProfileId, config, createdAt: Date.now() }
+    Item: batchItem
   }));
 
 
@@ -90,7 +245,14 @@ async function createBatch(event) {
   }
 
 
-  return response(201, { batchId, totalTasks, message: 'Batch created successfully' });
+  return response(201, { 
+    batchId, 
+    totalTasks, 
+    phase,
+    template: finalTemplate,
+    totalCsvRows: phase === 'test' ? csvRows.length : undefined,
+    message: `${phase === 'test' ? 'Test' : 'Full'} batch created successfully` 
+  });
 }
 
 async function getBatch(event) {

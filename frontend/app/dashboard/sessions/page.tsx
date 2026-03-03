@@ -12,7 +12,7 @@ import { SessionCard } from '@/components/features/sessions/SessionCard';
 export default function SessionsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { data: sessions, isLoading, error } = useSessions();
+  const { data: sessions, isLoading, error, refetch } = useSessions();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -99,7 +99,11 @@ export default function SessionsPage() {
         {!isLoading && !error && sessions && sessions.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sessions.map((session) => (
-              <SessionCard key={session.sessionId} session={session} />
+              <SessionCard 
+                key={session.sessionId} 
+                session={session}
+                onDelete={() => refetch()}
+              />
             ))}
           </div>
         )}

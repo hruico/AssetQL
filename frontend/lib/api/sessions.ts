@@ -25,6 +25,11 @@ export const sessionsApi = {
     return apiClient.put(`/sessions/${sessionId}/phase`, { newPhase: phase });
   },
 
+  // Delete a session
+  delete: async (sessionId: string): Promise<{ message: string; sessionId: string }> => {
+    return apiClient.delete(`/sessions/${sessionId}`);
+  },
+
   // Trigger automation
   triggerAutomation: async (sessionId: string): Promise<any> => {
     return apiClient.post(`/sessions/${sessionId}/automate`);

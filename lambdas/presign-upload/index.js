@@ -22,22 +22,27 @@ exports.handler = async (event) => {
     }
 
     const body = JSON.parse(event.body || '{}');
+    console.log('Request body:', JSON.stringify(body));
     const { fileName, fileType, folder } = body;
 
     // Validate required fields
     if (!fileName) {
+      console.log('Validation failed: fileName is required');
       return response(400, { error: 'fileName is required' });
     }
     if (!fileType) {
+      console.log('Validation failed: fileType is required');
       return response(400, { error: 'fileType is required' });
     }
     if (!folder) {
+      console.log('Validation failed: folder is required');
       return response(400, { error: 'folder is required (e.g., "style-references")' });
     }
 
     // Validate file type (security: only allow images)
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/avif'];
     if (!allowedTypes.includes(fileType)) {
+      console.log('Validation failed: Invalid file type:', fileType);
       return response(400, { 
         error: 'Invalid file type', 
         allowedTypes,

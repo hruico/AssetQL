@@ -49,6 +49,11 @@ resource "aws_dynamodb_table" "assets" {
     name = "category"  
     type = "S" 
     }
+  # New attribute for iteration workflow
+  attribute {
+    name = "locked"
+    type = "N"  # 0 = false, 1 = true (DynamoDB doesn't support boolean in GSI)
+  }
   global_secondary_index {
     name            = "batchId-createdAt-index"
     hash_key        = "batchId"
@@ -59,6 +64,13 @@ resource "aws_dynamodb_table" "assets" {
     name            = "userId-category-index"
     hash_key        = "userId"
     range_key       = "category"
+    projection_type = "ALL"
+  }
+  # New GSI for selective regeneration queries
+  global_secondary_index {
+    name            = "batchId-locked-index"
+    hash_key        = "batchId"
+    range_key       = "locked"
     projection_type = "ALL"
   }
   point_in_time_recovery { enabled = true }
@@ -143,8 +155,12 @@ resource "aws_dynamodb_table" "connections" {
 resource "aws_dynamodb_table" "feedback" {
   name         = "AssetQL-feedback"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "sessionId"
-  range_key    = "iterationNumber"
+  hash_key     = "feedbackId"
+
+  attribute {
+    name = "feedbackId"
+    type = "S"
+  }
 
   attribute {
     name = "sessionId"
@@ -156,15 +172,35 @@ resource "aws_dynamodb_table" "feedback" {
     type = "N"
   }
 
-  # ADD THESE: for asset-specific feedback queries
   attribute {
     name = "assetId"
     type = "S"
   }
 
+  # New attribute for feedback type classification
+  attribute {
+    name = "type"
+    type = "S"  # "per_image" or "batch_level"
+  }
+
+  global_secondary_index {
+    name            = "sessionId-iterationNumber-index"
+    hash_key        = "sessionId"
+    range_key       = "iterationNumber"
+    projection_type = "ALL"
+  }
+
   global_secondary_index {
     name            = "assetId-index"
     hash_key        = "assetId"
+    projection_type = "ALL"
+  }
+
+  # New GSI for querying feedback by type
+  global_secondary_index {
+    name            = "type-sessionId-index"
+    hash_key        = "type"
+    range_key       = "sessionId"
     projection_type = "ALL"
   }
 

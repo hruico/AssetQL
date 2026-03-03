@@ -1,5 +1,5 @@
 const sharp = require('sharp');  // Image processing library
-const { bedrock, s3, dynamo, GetObjectCommand, PutObjectCommand, UpdateCommand, InvokeModelCommand } = require('../../shared');
+const { bedrock, s3, dynamo, GetObjectCommand, PutObjectCommand, UpdateCommand, ConverseCommand } = require('../../shared');
 
 
 exports.handler = async (event) => {
@@ -16,7 +16,8 @@ exports.handler = async (event) => {
 
 
   // 2. Ask Bedrock Nova Lite to tag the image (50x cheaper than Claude)
-  const taggingPayload = {
+  const tagRes = await bedrock.send(new ConverseCommand({
+    modelId: 'apac.amazon.nova-lite-v1:0',
     messages: [{
       role: 'user',
       content: [
@@ -34,15 +35,9 @@ exports.handler = async (event) => {
       ]
     }],
     inferenceConfig: { maxTokens: 512, temperature: 0.3 }
-  };
-
-  const tagRes = await bedrock.send(new InvokeModelCommand({
-    modelId: 'apac.amazon.nova-lite-v1:0',
-    body: JSON.stringify(taggingPayload),
-    contentType: 'application/json'
   }));
-  const tagResBody = JSON.parse(Buffer.from(tagRes.body).toString());
-  const tagData = JSON.parse(tagResBody.output.message.content[0].text);
+  const tagText = tagRes.output.message.content[0].text;
+  const tagData = JSON.parse(tagText.replace(/```json|```/g, '').trim());
   
   // Flatten all fields into a single tags array
   const tags = [
@@ -70,7 +65,7 @@ exports.handler = async (event) => {
   await dynamo.send(new UpdateCommand({
     TableName: process.env.ASSETS_TABLE_NAME,
     Key: { assetId },
-    UpdateExpression: 'SET tags = :tags, category = :cat, thumbnailS3Key = :thumb',
+    UpdateExpression: 'SET tags = :tags, category = :cat, thumbnailKey = :thumb',
     ExpressionAttributeValues: { ':tags': tags, ':cat': tagData.category, ':thumb': thumbnailKey }
   }));
   console.log(`Tagged asset ${assetId} with ${tags.length} tags`);

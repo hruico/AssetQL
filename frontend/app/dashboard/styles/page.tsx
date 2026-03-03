@@ -102,7 +102,15 @@ export default function StylesPage() {
               <Link key={style.styleProfileId} href={`/dashboard/styles/${style.styleProfileId}`}>
                 <Card className="transition-shadow hover:shadow-md cursor-pointer">
                   <CardContent className="pt-6">
-                    <div className="mb-3 aspect-video rounded-lg bg-zinc-100 dark:bg-zinc-800" />
+                    {style.referenceUrl ? (
+                      <img 
+                        src={style.referenceUrl} 
+                        alt={style.name || 'Style reference'}
+                        className="mb-3 aspect-video rounded-lg object-cover w-full"
+                      />
+                    ) : (
+                      <div className="mb-3 aspect-video rounded-lg bg-zinc-100 dark:bg-zinc-800" />
+                    )}
                     <h3 className="mb-2 font-semibold text-zinc-900 dark:text-zinc-50">
                       Style {style.styleProfileId.slice(0, 8)}
                     </h3>

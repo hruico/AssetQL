@@ -1,5 +1,5 @@
-// Corrected import — add dynamo and UpdateCommand
-const { bedrock, dynamo, InvokeModelCommand, UpdateCommand } = require('../../shared');
+// Corrected import — add dynamo, GetCommand, and UpdateCommand
+const { bedrock, dynamo, InvokeModelCommand, GetCommand, UpdateCommand } = require('../../shared');
 
 exports.handler = async (event) => {
     console.log('Bedrock Agent Action Group Event:', JSON.stringify(event, null, 2));

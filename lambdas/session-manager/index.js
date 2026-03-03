@@ -1,4 +1,4 @@
-const { dynamo, GetCommand, PutCommand, UpdateCommand, QueryCommand, response } = require('../../shared');
+const { dynamo, GetCommand, PutCommand, UpdateCommand, QueryCommand, DeleteCommand, response } = require('../../shared');
 const crypto = require('crypto');
 
 // Define legal phase transitions
@@ -32,6 +32,8 @@ exports.handler = async (event) => {
         } else if (httpMethod === 'PUT' && path.endsWith('/phase')) {
             // Only route to phase update if the path explicitly ends with /phase
             return await updateSessionPhase(event);
+        } else if (httpMethod === 'DELETE' && pathParameters.sessionId) {
+            return await deleteSession(event);
         } else if (httpMethod === 'GET' && pathParameters.sessionId) {
             return await getSession(event);
         } else if (httpMethod === 'GET' && !pathParameters.sessionId) {
@@ -235,6 +237,47 @@ async function updateSessionPhase(event) {
     } catch (error) {
         console.error('Error updating session phase:', error);
         return response(500, { error: 'Failed to update session phase', details: error.message });
+    }
+}
+
+/**
+ * DELETE /api/v1/sessions/{sessionId}
+ * Deletes a session by ID
+ */
+async function deleteSession(event) {
+    try {
+        const sessionId = event.pathParameters.sessionId;
+        const userId = event.requestContext.authorizer.claims.sub;
+
+        // First verify the session exists and belongs to the user
+        const getResult = await dynamo.send(new GetCommand({
+            TableName: process.env.SESSIONS_TABLE_NAME,
+            Key: { sessionId }
+        }));
+
+        if (!getResult.Item) {
+            return response(404, { error: 'Session not found', sessionId });
+        }
+
+        // Verify ownership
+        if (getResult.Item.userId !== userId) {
+            return response(403, { error: 'Forbidden: You do not own this session' });
+        }
+
+        // Delete the session
+        await dynamo.send(new DeleteCommand({
+            TableName: process.env.SESSIONS_TABLE_NAME,
+            Key: { sessionId }
+        }));
+
+        return response(200, { 
+            message: 'Session deleted successfully',
+            sessionId 
+        });
+
+    } catch (error) {
+        console.error('Error deleting session:', error);
+        return response(500, { error: 'Failed to delete session', details: error.message });
     }
 }
 

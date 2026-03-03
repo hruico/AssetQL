@@ -264,6 +264,32 @@ resource "aws_lambda_function" "asset_tagger" {
   }
 }
 
+resource "aws_lambda_function" "assets_handler" {
+  filename         = "${path.root}/../lambdas/assets-handler.zip"
+  function_name    = "AssetQL-AssetsHandler-${var.environment}"
+  role            = aws_iam_role.style_embedding_role.arn
+  handler         = "index.handler"
+  runtime         = "nodejs20.x"
+  memory_size     = 512
+  timeout         = 30
+
+  layers = [
+    var.common_dependencies_layer_arn,
+    var.image_processing_layer_arn
+  ]
+
+  environment {
+    variables = {
+      S3_BUCKET = var.assets_bucket_name
+      ASSETS_TABLE_NAME = var.assets_table_name
+    }
+  }
+
+  tracing_config {
+    mode = "Active"
+  }
+}
+
 resource "aws_lambda_function" "websocket_handler" {
   filename         = "${path.root}/../lambdas/websocket-handler.zip"
   function_name    = "AssetQL-WebSocketHandler-${var.environment}"

@@ -1,5 +1,5 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryCommand, DeleteCommand} = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, QueryCommand, DeleteCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { SQSClient, SendMessageBatchCommand } = require('@aws-sdk/client-sqs');
 const { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
@@ -28,6 +28,6 @@ function response(statusCode, body) {
 }
 
 module.exports = { dynamo, s3, sqs, bedrock, bedrockAgentRuntime, response,
-  GetCommand, PutCommand, UpdateCommand, QueryCommand,
+  GetCommand, PutCommand, UpdateCommand, QueryCommand, ScanCommand,
   DeleteCommand,PutObjectCommand, GetObjectCommand, SendMessageBatchCommand, InvokeModelCommand, ConverseCommand, InvokeAgentCommand };
 
